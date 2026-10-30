@@ -15,7 +15,7 @@ import { RNG } from '../core/rng.js';
 
 function radialCount(r, depth, kind, hiRes) {
   if (kind === 'root') return r > 0.2 ? 30 : r > 0.12 ? 22 : 14;
-  if (kind === 'weep') return r > 0.008 ? 4 : 3;
+  if (kind === 'weep') return 3;
   if (depth === 0) return hiRes ? 144 : 72;
   if (r >= 0.2) return hiRes ? 56 : 36;
   if (r >= 0.12) return hiRes ? 40 : 28;
@@ -27,8 +27,8 @@ function radialCount(r, depth, kind, hiRes) {
   return 4;
 }
 
-const MAX_STEP = [0.022, 0.06, 0.07, 0.07, 0.065, 0.06];
-const MIN_STEP = [0.018, 0.03, 0.03, 0.035, 0.05, 0.065];
+const MAX_STEP = [0.022, 0.06, 0.07, 0.09, 0.08, 0.06];
+const MIN_STEP = [0.018, 0.03, 0.04, 0.055, 0.06, 0.065];
 
 function curvePoint(b, i, f, out) {
   const n = b.count;
@@ -110,7 +110,8 @@ export function buildBarkMesh(skel, opts = {}) {
       const d = Math.min(depth, 5);
       let step = V.clamp(r * 1.5, MIN_STEP[d], MAX_STEP[d]);
       if (isRoot) step = 0.045;
-      if (isWeep) step = 0.11;
+      // Hanging shoots are nearly straight: sparse rings except in the arc.
+      if (isWeep) step = s < 0.6 ? 0.08 : 0.2;
       if (isStub) step = 0.03;
       ringS.push(Math.min(L, s + step));
       if (L - ringS[ringS.length - 1] < step * 0.35) {

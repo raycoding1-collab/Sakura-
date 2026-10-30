@@ -255,7 +255,7 @@ export function generateSkeleton(seed = 7, opts = {}) {
   // ---- Trunk -------------------------------------------------------------------
   const T0 = sp.trunk;
   const trunk = register(new Branch(0));
-  const leanAz = T0.leanAz ?? rng.range(0, Math.PI * 2);
+  const leanAz = opts.leanAz ?? T0.leanAz ?? rng.range(0, Math.PI * 2);
   const lean = T0.lean;
   grow(trunk, [0, -0.45, 0], [Math.sin(lean) * Math.cos(leanAz), 1, Math.sin(lean) * Math.sin(leanAz)], T0.length, GROW[0]);
   {
@@ -355,9 +355,17 @@ export function generateSkeleton(seed = 7, opts = {}) {
         // Curtains fall lower toward the rim of the crown, forming a dome.
         const rim = V.smoothstep(2, crown.rx * 0.9, ol);
         const g = localGround(P[0], P[2]);
-        const endY = Math.max(g, opts.waterLevel !== undefined ? opts.waterLevel - origin[1] : -1e9) +
-          V.mix(W.endHigh, W.endLow, rim) + rng.range(-0.35, 0.35);
+        const floorY = Math.max(g, opts.waterLevel !== undefined ? opts.waterLevel - origin[1] : -1e9);
+        const endY = floorY + V.mix(W.endHigh, W.endLow, rim) + rng.range(-0.6, 0.9) * (rng.next() < 0.25 ? 1.6 : 1);
         const whip = growWhip(b, s, dir, endY, 4);
+        // Weeping shoots hang in loose bundles of different lengths.
+        if (whip && rng.next() < 0.45) {
+          const extra = rng.int(1, 2);
+          for (let e = 0; e < extra; e++) {
+            const d2 = [dir[0] + rng.sym(0.25), dir[1] + rng.sym(0.1), dir[2] + rng.sym(0.25)];
+            growWhip(b, Math.min(L - 0.02, s + rng.range(0.02, 0.08)), d2, endY + rng.range(0.3, 1.6), 4);
+          }
+        }
         if (whip && whip.length > 1.2) {
           const subs = rng.int(W.sub[0], W.sub[1]);
           for (let k = 0; k < subs; k++) {

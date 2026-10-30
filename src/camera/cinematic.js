@@ -16,10 +16,11 @@ export class CinematicCamera {
     this.nearestFlower = nearestFlower;
     this.auto = true;
     this.time = 0;
-    // Open on a three-quarter backlit view with the low sun beside the crown.
-    this.az0 = 2.15;
-    this.state = { az: 2.15, radius: 15, height: 1.6, look: 4 };
-    this.user = { az: 2.15, radius: 15, height: 1.6, look: 4 };
+    // Open across the pond, the low sun behind the crown.
+    this.az0 = 0;
+    this.time = CinematicCamera.startTime();
+    this.state = this.path(this.time, {});
+    this.user = { ...this.state };
     this.vel = { az: 0, pitch: 0 };
     this.idle = 0;
     this.blend = 1;
@@ -30,13 +31,30 @@ export class CinematicCamera {
     this.attach();
   }
 
-  // The scripted path, a function of time only.
+  // The scripted path, a function of time only: a slow loop through ten
+  // viewpoints around the garden (azimuth, distance, eye height, look height,
+  // seconds to reach the next), smoothly splined.
   path(t, out) {
-    out.az = this.az0 + t * (Math.PI * 2 / 320) + Math.sin(t * 0.021) * 0.35;
-    const w = 0.5 + 0.5 * Math.sin(t * 0.0195 + 1.2);
-    out.radius = 10.4 + 6.4 * smooth(w) + 0.9 * Math.sin(t * 0.047);
-    out.height = 0.9 + 1.5 * smooth(0.5 + 0.5 * Math.sin(t * 0.027 + 2.1));
-    out.look = 3.7 + 0.9 * (0.5 + 0.5 * Math.sin(t * 0.023 + 0.4)) + (1 - smooth(w)) * 0.5;
+    const K = CinematicCamera.KEYS;
+    const total = K.reduce((a, k) => a + k[4], 0);
+    let u = ((t % total) + total) % total;
+    let i = 0;
+    while (u > K[i][4]) { u -= K[i][4]; i++; }
+    const f = u / K[i][4];
+    const k = (j) => {
+      const n = K.length;
+      const key = K[((j % n) + n) % n].slice();
+      // Unwrap azimuth so the camera always travels the same way round.
+      key[0] += Math.floor(j / n) * Math.PI * 2;
+      return key;
+    };
+    const p0 = k(i - 1), p1 = k(i), p2 = k(i + 1), p3 = k(i + 2);
+    const s = f * f * (3 - 2 * f);
+    const cr = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * s + (2 * a - 5 * b + 4 * c - d) * s * s + (-a + 3 * b - 3 * c + d) * s * s * s);
+    out.az = this.az0 + cr(p0[0], p1[0], p2[0], p3[0]);
+    out.radius = cr(p0[1], p1[1], p2[1], p3[1]);
+    out.height = cr(p0[2], p1[2], p2[2], p3[2]);
+    out.look = cr(p0[3], p1[3], p2[3], p3[3]);
     return out;
   }
 
@@ -153,8 +171,8 @@ export class CinematicCamera {
     this.camera.lookAt(look);
     this.camera.updateMatrixWorld();
 
-    // Keep a respectful distance from the blossoms.
-    if (this.nearestFlower) {
+    // When the viewer drives, keep a respectful distance from the blossoms.
+    if (this.nearestFlower && !this.auto) {
       const d = this.nearestFlower(this.camera.position);
       if (d < 1.2) this.pushOut += (1.2 - d) * dt * 2.5;
       else this.pushOut = Math.max(0, this.pushOut - dt * 0.12);
@@ -162,7 +180,23 @@ export class CinematicCamera {
 
     // Focus on the near half of the crown, eased.
     const dist = this.camera.position.distanceTo(look);
-    const wantFocus = Math.max(3, dist - 3.5);
+    // Close in, focus on the trunk's surface; further out, on the near half of the crown.
+    const wantFocus = Math.max(2.5, dist < 8 ? dist - 0.9 : dist * 0.78);
     this.focus += (wantFocus - this.focus) * Math.min(1, dt * 1.5);
   }
 }
+
+// [azimuth, distance, eye height, look height, seconds to next]
+CinematicCamera.KEYS = [
+  [2.4, 16.0, 1.3, 3.4, 30],   // across the pond, backlit, mirrored in the water
+  [3.25, 12.0, 2.2, 3.8, 26],  // past the black pine and the azaleas
+  [3.9, 12.5, 3.2, 4.0, 26],   // high over the moss
+  [4.6, 12.6, 2.4, 4.2, 22],   // north
+  [5.06, 4.9, 1.35, 1.7, 28],  // through the curtain to the sacred rope and the hollow
+  [5.98, 8.2, 1.6, 3.0, 20],   // stepping back out
+  [6.46, 16.0, 1.6, 3.8, 26],  // front-lit, red maple in the foreground
+  [7.08, 15.0, 2.6, 3.6, 24],  // by the wash-basin
+  [7.73, 13.5, 1.7, 3.4, 24],  // over the second pond
+  [8.18, 15.0, 1.9, 3.2, 26],  // beside the vermilion bridge
+];
+CinematicCamera.startTime = () => 0;

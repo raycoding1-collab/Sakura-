@@ -176,9 +176,13 @@ export function createTerrain() {
         // Moss: velvety cushions of sugigoke.
         float cushion = fbm2(p * 2.6);
         float fuzz = vnoise2(p * 38.0);
-        vec3 moss = mix(vec3(0.02, 0.05, 0.012), vec3(0.06, 0.13, 0.022), smoothstep(0.3, 0.75, cushion));
-        moss = mix(moss, vec3(0.12, 0.17, 0.035), smoothstep(0.6, 0.95, cushion + fuzz * 0.25) * 0.6);
-        moss *= 0.85 + 0.3 * fuzz;
+        float patchM = fbm2(p * 0.45 + 7.0);
+        vec3 moss = mix(vec3(0.014, 0.034, 0.01), vec3(0.042, 0.095, 0.018), smoothstep(0.3, 0.75, cushion));
+        moss = mix(moss, vec3(0.09, 0.13, 0.03), smoothstep(0.6, 0.95, cushion + fuzz * 0.25) * 0.5);
+        // Patches of different mosses and bare, needle-strewn earth.
+        moss = mix(moss, vec3(0.06, 0.08, 0.03), smoothstep(0.55, 0.75, patchM) * 0.6);
+        moss = mix(moss, vec3(0.045, 0.035, 0.022), smoothstep(0.68, 0.82, fbm2(p * 0.9 - 3.0)) * 0.7);
+        moss *= 0.8 + 0.35 * fuzz;
         float hMoss = cushion * 0.025 + fuzz * 0.004;
         vec3 ground = mix(meadow(p, fine), moss, garden);
         albedo = ground;
@@ -211,12 +215,20 @@ export function createTerrain() {
 
         // Pebble beach (suhama) along the water.
         if (beach > 0.0) {
-          vec3 vo = voronoi2(p * 16.0);
-          float pebble = smoothstep(0.0, 0.18, vo.y - vo.x);
-          float dome = (1.0 - vo.x * vo.x) * pebble;
-          vec3 pc = mix(vec3(0.16, 0.15, 0.14), vec3(0.36, 0.34, 0.31), vo.z);
-          pc = mix(pc, vec3(0.08, 0.075, 0.07), step(0.82, vo.z));
-          pc = mix(vec3(0.05, 0.045, 0.04), pc, pebble);
+          // Rounded river pebbles of mixed sizes, bedded in dark sand.
+          vec2 wq = p + (vec2(vnoise2(p * 3.0), vnoise2(p * 3.0 + 5.0)) - 0.5) * 0.12;
+          vec3 vo = voronoi2(wq * 13.0);
+          vec3 vs = voronoi2(wq * 31.0 + 4.0);
+          bool small = vo.z > 0.62;
+          vec3 use = small ? vs : vo;
+          float size = mix(0.55, 0.85, hash11(use.z * 31.0));
+          float pebble = smoothstep(0.02, 0.2, use.y - use.x) * step(use.x, size);
+          float dome = (1.0 - sq(use.x / size)) * pebble;
+          vec3 pc = mix(vec3(0.14, 0.13, 0.12), vec3(0.38, 0.36, 0.33), hash11(use.z * 7.0));
+          pc = mix(pc, vec3(0.07, 0.065, 0.06), step(0.85, hash11(use.z * 3.0)));
+          pc = mix(pc, vec3(0.3, 0.22, 0.16), step(0.93, hash11(use.z * 5.0)));
+          pc *= 0.75 + 0.35 * dome;
+          pc = mix(vec3(0.045, 0.04, 0.032), pc, pebble);
           float wet = 1.0 - smoothstep(0.0, 0.3, pond);
           pc *= mix(1.0, 0.55, wet);
           albedo = mix(albedo, pc, beach);

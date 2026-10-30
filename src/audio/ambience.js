@@ -80,6 +80,41 @@ export class Ambience {
     this.nextNote = ctx.currentTime + 4;
   }
 
+  // The shishi-odoshi's hollow bamboo knock against its stone, then the
+  // small splash of the emptied tube.
+  knock() {
+    if (!this.ctx || !this.enabled) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 0.25);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.012));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const body = ctx.createBiquadFilter();
+    body.type = 'bandpass';
+    body.frequency.value = 820;
+    body.Q.value = 9;
+    const g = ctx.createGain();
+    g.gain.value = 0.9;
+    src.connect(body).connect(g);
+    g.connect(this.master);
+    g.connect(this.reverb);
+    src.start(t);
+    // Hollow resonance of the culm.
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 410;
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.12, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.connect(og);
+    og.connect(this.master);
+    og.connect(this.reverb);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
   stop() {
     if (!this.ctx) return;
     this.enabled = false;

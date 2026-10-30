@@ -16,6 +16,9 @@ import { createBlossomMaterials, createBlossomGeometry, BlossomDetail } from './
 import { buildCanopyGrid } from './tree/canopyGrid.js';
 import { createGarden } from './garden/garden.js';
 import { createWater, PlanarReflection } from './garden/water.js';
+import { createVegetation } from './garden/vegetation.js';
+import { createKoi } from './garden/koi.js';
+import { propGeometry } from './garden/propMaterial.js';
 import { SunShadow } from './render/shadows.js';
 import { PostPipeline } from './render/post.js';
 import { CinematicCamera } from './camera/cinematic.js';
@@ -29,7 +32,7 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const PRESETS = {
   high: { flowers: 0.75, grass: 160000, carpet: 42000, falling: 5000, motes: 1100, shadow: 4096, samples: 4, dof: true, pixels: 2.6e6, reflect: 0.5, reflectFlowers: 0.45 },
   medium: { flowers: 0.5, grass: 90000, carpet: 30000, falling: 3600, motes: 900, shadow: 2048, samples: 4, dof: true, pixels: 1.5e6, reflect: 0.35, reflectFlowers: 0.3 },
-  low: { flowers: 0.32, grass: 40000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6, reflect: 0, reflectFlowers: 0 },
+  low: { flowers: 0.32, grass: 40000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6, reflect: 0.25, reflectFlowers: 0.15 },
 };
 
 function detectQuality(gl) {
@@ -71,13 +74,13 @@ async function boot() {
   applyAtmosphere();
 
   // ---- Grow the tree ----------------------------------------------------------
-  ui.progress(0.05, 'Growing branches');
+  ui.progress(0.05, 'Growing an old weeping cherry');
   await nextFrame();
   const species = params.get('tree') === 'yoshino' ? YOSHINO_CHERRY : WEEPING_CHERRY;
   const skel = generateSkeleton(seed, { species, groundAt: groundHeight, waterLevel: WATER_LEVEL });
   const branchCount = skel.branches.filter((b) => b.kind === 'wood').length;
 
-  ui.progress(0.2, `${fmt(branchCount)} branches · laying down bark`);
+  ui.progress(0.2, `${fmt(branchCount)} branches · twisting the ancient trunk`);
   await nextFrame();
   const barkData = buildBarkMesh(skel, { groundAt: groundHeight, ancient: species === WEEPING_CHERRY, hiRes: qualityName !== 'low' });
   const barkGeo = createBarkGeometry(barkData);
@@ -131,7 +134,7 @@ async function boot() {
   scene.add(blossomsNear);
 
   // ---- The land and air ---------------------------------------------------------
-  ui.progress(0.68, 'Sowing the meadow');
+  ui.progress(0.66, 'Raking gravel, filling the pond, lighting lanterns');
   await nextFrame();
   const sky = createSky();
   scene.add(sky);
@@ -149,8 +152,23 @@ async function boot() {
   scene.add(grass.mesh);
   const carpet = createGroundPetals({ flowers, count: Q.carpet, windDir });
   scene.add(carpet.mesh);
+  ui.progress(0.74, 'Planting maples, pines and azaleas');
+  await nextFrame();
+  const veg = createVegetation({ groundAt: groundHeight, waterLevel: WATER_LEVEL, seed });
+  scene.add(veg.mesh);
+  const vegBarkGeo = createBarkGeometry(veg.barkData);
+  const vegBark = new THREE.Mesh(vegBarkGeo, barkMats.color);
+  vegBark.frustumCulled = false;
+  scene.add(vegBark);
+  const vegCoreGeo = propGeometry(veg.coreBuffers);
+  const vegCore = new THREE.Mesh(vegCoreGeo, garden.materials.color);
+  vegCore.frustumCulled = false;
+  scene.add(vegCore);
+
   const water = createWater(WATER_LEVEL);
   scene.add(water.mesh);
+  const koi = createKoi({ waterLevel: WATER_LEVEL });
+  scene.add(koi.mesh);
   const reflection = Q.reflect > 0 ? new PlanarReflection(renderer) : null;
   if (reflection) reflection.scale = Q.reflect;
   const falling = new FallingPetals({ flowers, capacity: Q.falling, windDir, gustField, onSplash: (x, z, t) => water.addImpact(x, z, t, 1) });
@@ -160,7 +178,7 @@ async function boot() {
 
   {
     const hide = (params.get('hide') || '').split(',');
-    const named = { sky, terrain, bark, blossoms, grass: grass.mesh, carpet: carpet.mesh, falling: falling.mesh, motes: motes.points, garden: garden.mesh, water: water.mesh };
+    const named = { sky, terrain, bark, blossoms, grass: grass.mesh, carpet: carpet.mesh, falling: falling.mesh, motes: motes.points, garden: garden.mesh, water: water.mesh, veg: veg.mesh };
     for (const k of hide) if (named[k]) named[k].visible = false;
   }
 
@@ -169,6 +187,9 @@ async function boot() {
   shadow.add(blossomShadowGeo, blossomMats.depth);
   shadow.add(falling.geometry, falling.materials.depth);
   shadow.add(garden.geometry, garden.materials.depth);
+  shadow.add(veg.geometry, veg.materials.depth);
+  shadow.add(vegBarkGeo, barkMats.depth);
+  shadow.add(vegCoreGeo, garden.materials.depth);
   shadow.scene.add(garden.rockerShadow);
   shadow.update(shared.uSunDir.value);
 
@@ -183,7 +204,7 @@ async function boot() {
 
   // ---- Camera, sound, controls ------------------------------------------------
   const cine = new CinematicCamera(camera, canvas, {
-    groundAt: groundHeight,
+    groundAt: (x, z) => Math.max(groundHeight(x, z), WATER_LEVEL),
     nearestFlower: (p) => detail.nearest(p),
   });
   const fixed = params.get('cam');
@@ -236,7 +257,7 @@ async function boot() {
   resize();
 
   // ---- Compile everything before the curtain rises ---------------------------------
-  ui.progress(0.84, 'Lighting the evening sky');
+  ui.progress(0.86, 'Waiting for dusk');
   await nextFrame();
   cine.update(0);
   try {
@@ -275,6 +296,7 @@ async function boot() {
     detail.update(camera.position, blossomMats.uniforms.uDetailDist.value);
     audio.update(shared.uGust.value);
     garden.update(time, () => audio.knock && audio.knock());
+    koi.update(dt, time);
     garden.lights.forEach((L, i) => {
       if (i >= shared.uLightColor.value.length) return;
       const fl = 0.86 + 0.08 * Math.sin(time * 9.1 + i * 2.3) + 0.06 * Math.sin(time * 23.7 + i * 5.1);
@@ -284,7 +306,7 @@ async function boot() {
     shadow.render();
     if (reflection) {
       // Mirror pass: lighter scene (no grass, motes or close-up flowers).
-      const hidden = [grass.mesh, motes.points, blossomsNear, water.mesh];
+      const hidden = [grass.mesh, motes.points, blossomsNear, water.mesh, koi.mesh];
       const fullCount = blossomGeo.instanceCount;
       const ok = reflection.render(scene, camera, WATER_LEVEL, (vc) => {
         for (const o of hidden) o.visible = false;
@@ -298,6 +320,9 @@ async function boot() {
       water.material.uniforms.uHasReflection.value = ok ? 1 : 0;
       water.material.uniforms.uReflection.value = reflection.target.texture;
       water.material.uniforms.uTexMatrix.value.copy(reflection.textureMatrix);
+      koi.material.uniforms.uHasReflection.value = ok ? 1 : 0;
+      koi.material.uniforms.uReflection.value = reflection.target.texture;
+      koi.material.uniforms.uTexMatrix.value.copy(reflection.textureMatrix);
     }
     fadeIn = Math.min(1, fadeIn + Math.min(raw, 0.25) / 3.5);
     post.params.fade = fadeIn * fadeIn * (3 - 2 * fadeIn);
@@ -333,11 +358,13 @@ async function boot() {
   window.__stats = {
     quality: qualityName,
     branches: branchCount,
+    weeps: skel.weeps.length,
+    foliage: veg.count,
     flowers: flowerCount,
     barkTris: barkData.triangleCount,
     grid: [grid.nx, grid.ny, grid.nz],
   };
-  ui.ready(`${fmt(branchCount)} branches · ${fmt(flowerCount)} blossoms`, params.has('frames'));
+  ui.ready(`${fmt(flowerCount)} blossoms · ${fmt(skel.weeps.length)} hanging branchlets`, params.has('frames'));
   requestAnimationFrame(() => frame());
 }
 

@@ -10,7 +10,7 @@ import { lightingUniforms } from '../render/uniforms.js';
 
 export const MAT = {
   GRANITE: 0, LACQUER: 1, WOOD: 2, BAMBOO: 3, STRAW: 4, PAPER: 5, GLOW: 6,
-  BLACK: 7, BRONZE: 8, ROCK: 9, FIRE: 10, WATER: 11,
+  BLACK: 7, BRONZE: 8, ROCK: 9, FIRE: 10, WATER: 11, FOLIAGE: 12,
 };
 
 const vertexShader = COMMON + WIND + /* glsl */ `
@@ -166,6 +166,13 @@ void main() {
     albedo = mix(vec3(0.3, 0.2, 0.08), vec3(0.08, 0.16, 0.12), pat);
     rough = mix(0.35, 0.8, pat);
     spec = 1.2;
+  } else if (m == 12) {
+    // Dense inner foliage of a clipped shrub: dark, leafy, barely lit.
+    float lv = vnoise3(wp * 45.0);
+    albedo = mix(vec3(0.012, 0.03, 0.01), vec3(0.03, 0.06, 0.018), lv);
+    h = lv * 0.004;
+    rough = 0.8;
+    spec = 0.6;
   } else if (m == 11) {
     // Still water in a stone basin: dark, mirror-smooth.
     albedo = vec3(0.004, 0.007, 0.008);

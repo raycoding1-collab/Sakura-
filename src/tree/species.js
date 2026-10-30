@@ -40,7 +40,7 @@ export const WEEPING_CHERRY = {
     { start: 0.15, end: 0.95, gap: [0.18, 0.3], angle: [0.5, 0.95], lenRatio: [0.35, 0.6], minLen: 0.15, maxLen: 0.6, lift: 0.2, inwardSkip: 0.3 },
   ],
   maxDepth: 4,
-  weep: { from: [2, 3, 4], start: 0.25, gap: [0.36, 0.62], arc: [0.25, 0.7], wander: 0.42, endHigh: 2.6, endLow: 0.75, sub: [1, 3] },
+  weep: { from: [2, 3, 4], start: 0.2, gap: [0.42, 0.72], arc: [0.25, 0.7], wander: 0.42, endHigh: 2.8, endLow: 0.75, sub: [1, 2] },
   roots: { count: 9, length: [1.3, 2.6], radius: [0.26, 0.38] },
   rTip: 0.0026,
   trunkTop: 0.5,
@@ -90,4 +90,77 @@ export const YOSHINO_CHERRY = {
   stubs: 2,
   epicormic: 19,
   blossom: { pink: 0.35, sizeScale: 1.42 },
+};
+
+// Japanese maple (Acer palmatum): low, layered, spreading.
+export const MAPLE = {
+  name: 'momiji',
+  seedSalt: 101,
+  trunk: { length: 1.5, lean: 0.14 },
+  crown: { c: [0, 3.0, 0], rx: 3.3, rz: 3.1, ryUp: 1.9, ryDown: 1.6, lump: 0.16 },
+  limbs: {
+    elevations: [0.95, 0.8, 0.66, 0.54],
+    attach: [0.0, 0.5],
+    length: (el) => 3.0 + (1 - el) * 1.6,
+    leader: { elevation: 1.3, length: [2.3, 2.7] },
+  },
+  leaders: 0,
+  grow: [
+    grow(0.08, 0.35, 0.8, () => 0.1, () => 0, 0),
+    grow(0.1, 0.6, 0.8, () => 0.1, () => 0.14, 0.03),
+    grow(0.07, 0.8, 1.4, () => 0.12, () => 0.18, 0.03),
+    grow(0.05, 1.0, 2.4, () => 0.15, () => 0.12, 0.02),
+    grow(0.04, 1.1, 3.5, () => 0.25, () => 0.05, 0.01),
+  ],
+  spawn: [
+    null,
+    null,
+    { start: 0.2, end: 0.97, gap: [0.22, 0.38], angle: [0.7, 1.1], lenRatio: [0.45, 0.7], minLen: 0.4, maxLen: 1.8, lift: 0.0, inwardSkip: 0.7 },
+    { start: 0.15, end: 0.97, gap: [0.13, 0.22], angle: [0.6, 1.0], lenRatio: [0.4, 0.65], minLen: 0.18, maxLen: 0.8, lift: 0.05, inwardSkip: 0.5 },
+    { start: 0.1, end: 0.95, gap: [0.07, 0.12], angle: [0.5, 0.9], lenRatio: [0.4, 0.7], minLen: 0.06, maxLen: 0.3, lift: 0.1, inwardSkip: 0.2 },
+  ],
+  maxDepth: 4,
+  weep: null,
+  roots: { count: 5, length: [0.4, 0.8], radius: [0.06, 0.09] },
+  rTip: 0.002,
+  trunkTop: 0.1,
+  trunkMin: 0.11,
+  stubs: 0,
+  epicormic: 0,
+};
+
+// Japanese black pine (Pinus thunbergii) trained as niwaki: a leaning,
+// sinuous trunk with near-horizontal limbs ending in cloud-like pads.
+export const PINE = {
+  name: 'kuromatsu',
+  seedSalt: 202,
+  trunk: { length: 4.2, lean: 0.5 },
+  crown: { c: [0, 3.6, 0], rx: 4.0, rz: 4.0, ryUp: 2.2, ryDown: 3.0, lump: 0.1 },
+  limbs: {
+    elevations: [0.3, 0.18, 0.4, 0.22, 0.34, 0.12],
+    attach: [0.4, 2.8],
+    length: () => 2.3,
+    leader: { elevation: 1.0, length: [1.2, 1.6] },
+  },
+  leaders: 0,
+  grow: [
+    grow(0.08, 0.7, 0.45, () => 0.18, () => 0, 0),
+    grow(0.08, 0.6, 1.0, () => 0.05, () => 0.1, 0.02),
+    grow(0.06, 0.8, 1.6, () => 0.1, () => 0.1, 0.01),
+    grow(0.05, 1.0, 2.4, () => 0.15, () => 0.05, 0.0),
+  ],
+  spawn: [
+    null,
+    null,
+    { start: 0.4, end: 0.95, gap: [0.3, 0.5], angle: [0.6, 1.0], lenRatio: [0.3, 0.5], minLen: 0.3, maxLen: 0.9, lift: 0.05, inwardSkip: 0.8 },
+    { start: 0.3, end: 0.95, gap: [0.15, 0.25], angle: [0.6, 1.0], lenRatio: [0.35, 0.55], minLen: 0.12, maxLen: 0.4, lift: 0.1, inwardSkip: 0.4 },
+  ],
+  maxDepth: 3,
+  weep: null,
+  roots: { count: 5, length: [0.6, 1.1], radius: [0.08, 0.12] },
+  rTip: 0.004,
+  trunkTop: 0.12,
+  trunkMin: 0.14,
+  stubs: 1,
+  epicormic: 0,
 };

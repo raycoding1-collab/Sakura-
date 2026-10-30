@@ -159,16 +159,19 @@ void main() {
   // The water column: how deep, and how far the eye looks through it.
   float depth = 0.12 + 0.62 * smoothstep(0.0, 2.6, -sdf);
   float path = depth / max(v.y, 0.15);
-  float T = exp(-path * 2.6);
+  float T = exp(-path * 4.2);
   vec3 sh = vec3(shadowFast(vWorld + uSunDir * 0.05, 0.03, 2.0));
-  vec3 scatter = (ambientLight(vec3(0.0, 1.0, 0.0)) * 0.08 + uSunColor * sh * 0.025) * vec3(0.35, 0.7, 0.55);
+  // Murky jade water: light scattered back from suspended silt and algae.
+  vec3 scatter = (ambientLight(vec3(0.0, 1.0, 0.0)) * 0.11 + uSunColor * sh * 0.03) * vec3(0.25, 0.62, 0.45);
   // Sun glint.
   vec3 glint = uSunColor * sh * ggxSpec(n, v, uSunDir, 0.06) * 2.0;
   vec3 lamp = localLight(vWorld, n, 0.0) * 0.05;
 
-  vec3 c = scatter * (1.0 - T) * (1.0 - F) + refl * F + glint + lamp;
+  // A faint sheen of sky even looking straight down keeps it reading as water.
+  float sheen = 0.05 + F;
+  vec3 c = scatter * (1.0 - T) * (1.0 - sheen) + refl * sheen + glint + lamp;
   // Shallow margins fade into the pebble beach.
-  float a = 1.0 - T * (1.0 - F);
+  float a = 1.0 - T * (1.0 - sheen);
   a *= 1.0 - smoothstep(-0.05, 0.25, sdf);
   c = applyFog(c / max(a, 1e-3), vWorld);
   gl_FragColor = vec4(c * a, a);
