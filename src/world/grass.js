@@ -141,9 +141,9 @@ export function createGrass({ count = 200000, radius = 34, seed = 99, treeFoot =
         vec3 n = normalize(vNormal);
         if (dot(n, v) < 0.0) n = -n;
         vec3 l = uSunDir;
-        vec3 root = vec3(0.014, 0.028, 0.01);
-        vec3 mid = vec3(0.042, 0.082, 0.022);
-        vec3 tip = vec3(0.12, 0.14, 0.05);
+        vec3 root = vec3(0.014, 0.026, 0.01);
+        vec3 mid = vec3(0.045, 0.072, 0.022);
+        vec3 tip = vec3(0.13, 0.13, 0.045);
         vec3 albedo = mix(root, mid, smoothstep(0.0, 0.45, t));
         albedo = mix(albedo, tip, smoothstep(0.45, 1.0, t)) * vTint;
         float ao = mix(0.35, 1.0, smoothstep(0.0, 0.7, t)) * (0.3 + 0.7 * canopy.x);

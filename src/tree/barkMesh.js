@@ -45,9 +45,8 @@ export function buildBarkMesh(skel, opts = {}) {
   const index = [];
   let vbase = 0;
 
-  const C = [0, 0, 0], Cprev = [0, 0, 0], T = [0, 0, 0], N = [0, 0, 0], B = [0, 0, 0];
+  const C = [0, 0, 0], T = [0, 0, 0], N = [0, 0, 0], B = [0, 0, 0];
   const tmp = [0, 0, 0], rd = [0, 0, 0], q = [0, 0, 0];
-  void Cprev;
 
   for (const b of skel.branches) {
     const L = b.length;
@@ -129,7 +128,7 @@ export function buildBarkMesh(skel, opts = {}) {
       let crotchAO = 1;
       if (parent && !isRoot) {
         const ex = Math.max(0, s - rp * 0.7);
-        const amp = 0.12 + 0.4 * Math.min(1, r0 / rp);
+        const amp = 0.12 + (depth === 1 ? 0.6 : 0.4) * Math.min(1, r0 / rp);
         collar = 1 + amp * Math.exp(-ex / (rp * 0.9 + r0 * 2));
         crotchAO = 1 - 0.5 * Math.exp(-Math.max(0, s - rp * 0.6) / (rp * 0.8 + 0.01));
       }
@@ -221,7 +220,6 @@ export function buildBarkMesh(skel, opts = {}) {
         }
       }
       vbase += sides;
-      V.copy(Cprev, C);
     }
 
     // Tip cap.

@@ -172,7 +172,6 @@ export function generateSkeleton(seed = 7, opts = {}) {
     const gp = GROW[Math.min(br.depth, GROW.length - 1)];
     const p = V.clone(start);
     const d = V.normalize([0, 0, 0], dir);
-    const tmp = [0, 0, 0];
     const en = [0, 0, 0];
     br.addNode(p);
     const n = Math.max(2, Math.ceil(length / gp.seg));
@@ -221,7 +220,6 @@ export function generateSkeleton(seed = 7, opts = {}) {
       V.addScaled(p, p, d, seg);
       br.addNode(p);
     }
-    void tmp;
   }
 
   function spawnChildren(parent, cd) {
@@ -383,6 +381,19 @@ export function generateSkeleton(seed = 7, opts = {}) {
       let r = rTip + k * Math.sqrt(down);
       if (b.depth === 0) r *= 1 + 0.16 * (1 - s / L);
       b.r.push(r);
+    }
+  }
+  // The trunk swells into a knuckle where the scaffold limbs fork, instead of
+  // thinning as each limb takes its share.
+  {
+    const firstFork = Math.min(...trunk.children.filter((c) => c.kind === 'wood' && c.depth === 1).map((c) => c.attachS));
+    const rFork = trunk.radiusAt(firstFork);
+    const L = trunk.length;
+    for (let i = 0; i < trunk.count; i++) {
+      const s = trunk.s[i];
+      if (s <= firstFork) continue;
+      const t = (s - firstFork) / Math.max(1e-3, L - firstFork);
+      trunk.r[i] = Math.max(trunk.r[i], rFork * V.mix(1.0, 0.62, t * t));
     }
   }
   for (const r of roots) {

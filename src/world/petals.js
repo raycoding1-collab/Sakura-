@@ -207,7 +207,7 @@ export class FallingPetals {
     for (let k = 0; k < 360; k++) this.update(1 / 30, k / 30, 0.3, true);
   }
 
-  spawn(i, time) {
+  spawn(i) {
     const r = this.rng;
     let x, y, z;
     if (r.next() < 0.16) {
@@ -245,7 +245,6 @@ export class FallingPetals {
     this.life[i] = r.range(6, 18);
     this.restY[i] = r.range(0.004, 0.07) * (r.chance(0.6) ? 1 : 0.2);
     this.airborne++;
-    void time;
   }
 
   // Divergence-free swirl: curl of a sum of travelling sine potentials.
@@ -279,7 +278,7 @@ export class FallingPetals {
         this.timer[i] -= dt;
         if (S[i * 4] > 0) S[i * 4] = Math.max(0, S[i * 4] - dt * 0.012);
         if (this.timer[i] <= 0 && toSpawn > 0) {
-          this.spawn(i, time);
+          this.spawn(i);
           toSpawn--;
         }
         continue;
