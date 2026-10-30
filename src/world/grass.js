@@ -118,7 +118,9 @@ export function createGrass({ count = 200000, radius = 34, seed = 99, treeFoot =
         vNormal = n;
         vBlade = vec2(position.x, t);
         float hue = iShape.w;
-        vTint = mix(vec3(0.8, 0.95, 0.8), vec3(1.25, 1.05, 0.6), hue * hue);
+        // Patches of lush, cool and sun-dried grass.
+        float patchN = vnoise2(root.xz * 0.21) * 0.65 + vnoise2(root.xz * 0.9) * 0.35;
+        vTint = mix(vec3(0.82, 0.95, 0.85), vec3(1.35, 1.1, 0.62), saturate(hue * hue * 0.7 + smoothstep(0.45, 0.8, patchN) * 0.6));
         vShadow = shadowFast(p + uSunDir * 0.02, 0.02, 2.5);
         vCanopy = canopyLight(p);
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
@@ -139,9 +141,9 @@ export function createGrass({ count = 200000, radius = 34, seed = 99, treeFoot =
         vec3 n = normalize(vNormal);
         if (dot(n, v) < 0.0) n = -n;
         vec3 l = uSunDir;
-        vec3 root = vec3(0.016, 0.034, 0.01);
-        vec3 mid = vec3(0.045, 0.1, 0.022);
-        vec3 tip = vec3(0.12, 0.16, 0.045);
+        vec3 root = vec3(0.014, 0.028, 0.01);
+        vec3 mid = vec3(0.042, 0.082, 0.022);
+        vec3 tip = vec3(0.12, 0.14, 0.05);
         vec3 albedo = mix(root, mid, smoothstep(0.0, 0.45, t));
         albedo = mix(albedo, tip, smoothstep(0.45, 1.0, t)) * vTint;
         float ao = mix(0.35, 1.0, smoothstep(0.0, 0.7, t)) * (0.3 + 0.7 * canopy.x);

@@ -210,7 +210,7 @@ export class FallingPetals {
   spawn(i, time) {
     const r = this.rng;
     let x, y, z;
-    if (r.next() < 0.22) {
+    if (r.next() < 0.16) {
       // A few drift in from upwind near the viewer, for close passing petals.
       const c = this.cameraPos;
       const a = r.range(0, Math.PI * 2);

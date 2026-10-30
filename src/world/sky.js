@@ -44,7 +44,7 @@ vec3 skyGradient(vec3 rd) {
   float anti = pow(1.0 - az, 3.0);
   c = mix(c, vec3(0.3, 0.3, 0.48), anti * (1.0 - smoothstep(0.0, 0.05, h)) * smoothstep(-0.02, 0.012, h) * 0.55);
   float s = saturate(sd);
-  c += uSunColor * (0.05 * pow(s, 4.0) + 0.14 * pow(s, 32.0) + 0.55 * pow(s, 350.0));
+  c += uSunColor * (0.035 * pow(s, 4.0) + 0.12 * pow(s, 32.0) + 0.5 * pow(s, 350.0));
   return c;
 }
 
@@ -57,7 +57,7 @@ vec4 clouds(vec3 rd) {
   vec2 q = uv * 0.55 + drift;
   float warp = fbm2(q * 0.7 + 3.0);
   float n = fbm2(q * 1.3 + warp * 0.9);
-  float dens = smoothstep(0.56, 0.82, n);
+  float dens = smoothstep(0.5, 0.76, n) * smoothstep(0.2, 0.7, fbm2(q * 0.25 + 31.0));
   // Long glowing streaks low over the horizon.
   vec2 su = vec2(uv.x * 0.9 + uv.y * 0.3, (uv.y - uv.x * 0.3) * 6.0) * 0.18 + drift * 0.6;
   float streak = smoothstep(0.52, 0.8, fbm2(su + 11.0)) * (1.0 - smoothstep(0.0, 0.25, rd.y)) * 0.8;
@@ -69,8 +69,9 @@ vec4 clouds(vec3 rd) {
   float occl = smoothstep(0.45, 0.85, n2);
   float lit = exp(-occl * 2.2);
   float az = dot(normalize(rd.xz + 1e-4), normalize(uSunDir.xz)) * 0.5 + 0.5;
-  vec3 shade = mix(vec3(0.3, 0.26, 0.42), vec3(0.62, 0.36, 0.42), az * az) * 0.75;
-  vec3 glow = uSunColor * mix(0.1, 0.36, az * az) * vec3(1.0, 0.85, 0.85);
+  vec3 shade = mix(vec3(0.28, 0.24, 0.42), vec3(0.6, 0.32, 0.4), az * az) * 0.7;
+  // Undersides catch the sun from below the horizon line: rose to gold.
+  vec3 glow = uSunColor * mix(0.12, 0.42, az * az) * mix(vec3(1.0, 0.7, 0.85), vec3(1.0, 0.9, 0.8), az);
   vec3 col = mix(shade, glow, lit);
   // Silver lining where the cloud thins near the sun.
   col += uSunColor * pow(saturate(sd), 10.0) * (1.0 - dens) * 1.6;

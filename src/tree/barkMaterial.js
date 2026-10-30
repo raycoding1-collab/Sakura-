@@ -81,7 +81,7 @@ void main() {
   // Albedo.
   vec3 young = mix(vec3(0.07, 0.036, 0.034), vec3(0.1, 0.055, 0.048), grain);
   young = mix(young, vec3(0.26, 0.21, 0.17), lent);
-  vec3 old = mix(vec3(0.038, 0.032, 0.03), vec3(0.085, 0.075, 0.07), smoothstep(0.4, 0.8, strips) * 0.85);
+  vec3 old = mix(vec3(0.032, 0.026, 0.025), vec3(0.07, 0.06, 0.056), smoothstep(0.4, 0.8, strips) * 0.85);
   old = mix(old, vec3(0.12, 0.105, 0.1), smoothstep(0.55, 0.85, stripsB) * 0.3);
   old = mix(old, vec3(0.19, 0.15, 0.12), scars * 0.6);
   old = mix(old, vec3(0.016, 0.013, 0.012), fiss * 0.6);

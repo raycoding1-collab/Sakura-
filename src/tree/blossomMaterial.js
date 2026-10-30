@@ -20,6 +20,7 @@ attribute vec4 iWind;
 attribute vec3 iAnchor;
 uniform vec3 uViewPos;
 uniform float uDetailDist;
+uniform float uFlowerScale;
 varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec2 vUv;
@@ -36,7 +37,7 @@ vec3 rotAxis(vec3 v, vec3 k, float a) {
 
 void main() {
   float type = aPart.x;
-  float scale = iParams.x;
+  float scale = iParams.x * uFlowerScale;
   float open = iParams.y;
   float phase = iExtra.y;
   vec3 local = vec3(0.0);
@@ -119,7 +120,7 @@ void main() {
   // Flutter about the spur, then ride along with the twig.
   float g = gustField(iAnchor.xz, uTime) * (0.5 + uGust) * uWindStrength;
   vec3 axis = normalize(vec3(-uWindDir.y, 0.3, uWindDir.x));
-  float fl = (0.07 + 0.12 * g) * sin(uTime * (2.1 + phase * 1.9) + phase * TAU) + 0.06 * g;
+  float fl = (0.12 + 0.18 * g) * sin(uTime * (1.9 + phase * 1.7) + phase * TAU) + 0.08 * g;
   world = iAnchor + rotAxis(world - iAnchor, axis, fl);
   wn = rotAxis(wn, axis, fl);
   world += treeWind(iAnchor, iWind);
@@ -316,6 +317,7 @@ export function createBlossomMaterials() {
   const uniforms = lightingUniforms({
     uViewPos: { value: new THREE.Vector3() },
     uDetailDist: { value: 5.5 },
+    uFlowerScale: { value: 1 },
   });
   const vertexShader = COMMON + WIND + FLOWER_VERTEX;
   const color = new THREE.ShaderMaterial({
@@ -387,6 +389,24 @@ export class BlossomDetail {
 
   key(x, y, z) {
     return ((x + 512) * 1024 + (y + 512)) * 1024 + (z + 512);
+  }
+
+  // Distance from p to the nearest flower (searches a 2 m neighbourhood).
+  nearest(p) {
+    const P = this.packed.iPos;
+    let best = 4;
+    const cx = Math.floor(p.x), cy = Math.floor(p.y), cz = Math.floor(p.z);
+    for (let x = cx - 2; x <= cx + 2; x++)
+      for (let y = cy - 2; y <= cy + 2; y++)
+        for (let z = cz - 2; z <= cz + 2; z++) {
+          const list = this.cells.get(this.key(x, y, z));
+          if (!list) continue;
+          for (const i of list) {
+            const d = Math.hypot(P[i * 3] - p.x, P[i * 3 + 1] - p.y, P[i * 3 + 2] - p.z);
+            if (d < best) best = d;
+          }
+        }
+    return best;
   }
 
   update(camPos, radius) {

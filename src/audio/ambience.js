@@ -1,0 +1,139 @@
+// Synthesised evening ambience, all generated in code: wind that swells with
+// the same gusts that move the tree, a soft rustle of blossoms, and now and
+// then a plucked note from a Japanese in-scale (Karplus–Strong strings in a
+// generated reverb).
+
+export class Ambience {
+  constructor() {
+    this.ctx = null;
+    this.enabled = false;
+  }
+
+  start() {
+    if (this.ctx) {
+      this.ctx.resume();
+      this.enabled = true;
+      this.master.gain.setTargetAtTime(0.9, this.ctx.currentTime, 1.2);
+      return;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = (this.ctx = new AC());
+    this.enabled = true;
+    const master = (this.master = ctx.createGain());
+    master.gain.value = 0;
+    master.gain.setTargetAtTime(0.9, ctx.currentTime, 1.5);
+    master.connect(ctx.destination);
+
+    // Reverb from a generated impulse response.
+    const reverb = ctx.createConvolver();
+    const len = Math.floor(ctx.sampleRate * 4.5);
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+    }
+    reverb.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.55;
+    reverb.connect(wet).connect(master);
+    this.reverb = reverb;
+
+    // Brown noise source shared by wind and rustle.
+    const nlen = ctx.sampleRate * 6;
+    const nb = ctx.createBuffer(1, nlen, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < nlen; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      nd[i] = last * 3.5;
+    }
+    const mkNoise = () => {
+      const s = ctx.createBufferSource();
+      s.buffer = nb;
+      s.loop = true;
+      s.start(0, Math.random() * 5);
+      return s;
+    };
+
+    const windFilter = ctx.createBiquadFilter();
+    windFilter.type = 'bandpass';
+    windFilter.frequency.value = 420;
+    windFilter.Q.value = 0.6;
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0.2;
+    mkNoise().connect(windFilter).connect(windGain).connect(master);
+    this.windFilter = windFilter;
+    this.windGain = windGain;
+
+    const rustleFilter = ctx.createBiquadFilter();
+    rustleFilter.type = 'highpass';
+    rustleFilter.frequency.value = 2600;
+    const rustleGain = ctx.createGain();
+    rustleGain.gain.value = 0.0;
+    mkNoise().connect(rustleFilter).connect(rustleGain).connect(master);
+    this.rustleGain = rustleGain;
+
+    // Pre-render a few plucked strings.
+    const scale = [293.66, 311.13, 392.0, 440.0, 466.16, 587.33, 622.25, 783.99];
+    this.notes = scale.map((f) => this.pluck(f));
+    this.nextNote = ctx.currentTime + 4;
+  }
+
+  stop() {
+    if (!this.ctx) return;
+    this.enabled = false;
+    this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
+  }
+
+  pluck(freq) {
+    const ctx = this.ctx;
+    const sr = ctx.sampleRate;
+    const n = Math.floor(sr * 4);
+    const buf = ctx.createBuffer(1, n, sr);
+    const d = buf.getChannelData(0);
+    const period = Math.round(sr / freq);
+    const ring = new Float32Array(period);
+    for (let i = 0; i < period; i++) ring[i] = Math.random() * 2 - 1;
+    let idx = 0;
+    for (let i = 0; i < n; i++) {
+      const a = ring[idx];
+      const b = ring[(idx + 1) % period];
+      const v = 0.5 * (a + b) * 0.9965;
+      ring[idx] = v;
+      d[i] = a * Math.min(1, i / 40) * (1 - i / n);
+      idx = (idx + 1) % period;
+    }
+    return buf;
+  }
+
+  update(gust) {
+    if (!this.ctx || !this.enabled) return;
+    const t = this.ctx.currentTime;
+    this.windGain.gain.setTargetAtTime(0.12 + gust * 0.32, t, 0.8);
+    this.windFilter.frequency.setTargetAtTime(320 + gust * 420, t, 1.2);
+    this.rustleGain.gain.setTargetAtTime(0.004 + gust * gust * 0.05, t, 0.6);
+    if (t > this.nextNote) {
+      const count = Math.random() < 0.3 ? 2 : 1;
+      for (let k = 0; k < count; k++) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.notes[Math.floor(Math.random() * this.notes.length)];
+        const g = this.ctx.createGain();
+        g.gain.value = 0.08 + Math.random() * 0.06;
+        const pan = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+        if (pan) {
+          pan.pan.value = Math.random() * 1.2 - 0.6;
+          src.connect(g).connect(pan);
+          pan.connect(this.reverb);
+          pan.connect(this.master);
+        } else {
+          src.connect(g);
+          g.connect(this.reverb);
+          g.connect(this.master);
+        }
+        src.start(t + k * (0.25 + Math.random() * 0.3));
+      }
+      this.nextNote = t + 7 + Math.random() * 11;
+    }
+  }
+}

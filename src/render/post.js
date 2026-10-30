@@ -239,7 +239,10 @@ void main() {
     float m = smoothstep(0.9, 2.2, max(coc, dof.a * 2.0));
     col = mix(col, dof.rgb, m);
   }
-  col += texture2D(tGod, vUv).rgb * uGodTint * uGod;
+  // In-scattering grows with the length of air in front of each pixel.
+  float sceneDepth = linearDepth(texture2D(tDepth, vUv).r);
+  float airPath = 1.0 - exp(-sceneDepth / 16.0);
+  col += texture2D(tGod, vUv).rgb * uGodTint * uGod * mix(0.15, 1.0, airPath);
   vec3 bloom = texture2D(tBloom, vUv).rgb / uBloomLevels;
   col = mix(col, bloom, uBloom);
   col *= uExposure;
@@ -293,19 +296,20 @@ export class PostPipeline {
         uUseDof: { value: 1 }, uFocus: { value: 15 }, uAperture: { value: 40 },
         uGodTint: { value: new THREE.Color(1.0, 0.72, 0.45) }, uGod: { value: 0.0 },
         uBloom: { value: 0.07 }, uBloomLevels: { value: this.bloomLevels },
-        uExposure: { value: 1.0 }, uVignette: { value: 0.32 }, uGrain: { value: 0.018 }, uFade: { value: 1 },
+        uExposure: { value: 1.0 }, uVignette: { value: 0.32 }, uGrain: { value: 0.012 }, uFade: { value: 1 },
         uResolution: { value: new THREE.Vector2(1, 1) },
       }),
     };
     this.params = {
       focus: 15,
-      aperture: 60, // blur in full-res pixels per dioptre of defocus, at 1080p
+      aperture: 48, // blur in full-res pixels per dioptre of defocus, at 1080p
       exposure: 1.0,
-      bloom: 0.07,
-      god: 0.55,
+      bloom: 0.085,
+      god: 0.75,
       fade: 1,
     };
     this.sunUV = new THREE.Vector2(0.5, 0.5);
+    this.adapt = 1;
     this.sunVisible = 0;
     this.width = 0;
     this.height = 0;
@@ -451,7 +455,9 @@ export class PostPipeline {
     c.uAperture.value = aperture;
     c.uGod.value = god;
     c.uBloom.value = this.params.bloom;
-    c.uExposure.value = this.params.exposure;
+    // Eye adaptation: stop down a little when staring into the low sun.
+    this.adapt += (1 - 0.22 * this.sunVisible - this.adapt) * 0.03;
+    c.uExposure.value = this.params.exposure * this.adapt;
     c.uFade.value = this.params.fade;
     c.uResolution.value.set(w, h);
     this.draw(m.composite, null);

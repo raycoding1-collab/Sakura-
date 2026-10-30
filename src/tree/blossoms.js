@@ -85,7 +85,7 @@ export function placeBlossoms(skel, opts = {}) {
 
       const stage = rng.next();
       // Slightly larger than life so the crown reads as a cloud from afar.
-      let open, scale = rng.range(0.0165, 0.0205) * 1.3;
+      let open, scale = rng.range(0.0165, 0.0205) * 1.42;
       if (stage < 0.07) { open = rng.range(0.0, 0.16); scale *= 0.8; }
       else if (stage < 0.17) { open = rng.range(0.35, 0.75); scale *= 0.92; }
       else open = rng.range(0.86, 1.0);
@@ -113,7 +113,7 @@ export function placeBlossoms(skel, opts = {}) {
     if (b.kind !== 'wood' || b.depth < 3) continue;
     const L = b.length;
     let start, gap;
-    if (b.depth === 3) { start = L * 0.4; gap = 0.07; }
+    if (b.depth === 3) { start = L * 0.3; gap = 0.06; }
     else if (b.depth === 4) { start = L * 0.08; gap = 0.046; }
     else { start = Math.min(L * 0.15, 0.03); gap = 0.04; }
     gap /= density;

@@ -16,8 +16,8 @@ function rawHeight(x, z) {
   let h = 1.1 * Math.exp(-(r * r) / (26 * 26));
   const fall = smoothstep(26, 170, r);
   const toward = r > 1e-3 ? (x * sunX + z * sunZ) / r : 0;
-  h -= fall * (11 + 7 * Math.max(0, toward));
-  h += noise.fbm2(x * 0.016 + 3.1, z * 0.016 - 1.7, 4) * (0.5 + 7 * smoothstep(25, 260, r));
+  h -= fall * (13 + 7 * Math.max(0, toward));
+  h += noise.fbm2(x * 0.012 + 3.1, z * 0.012 - 1.7, 5) * (0.5 + 11 * smoothstep(25, 300, r));
   h += noise.fbm2(x * 0.09, z * 0.09, 3) * 0.16 * (1 - smoothstep(30, 80, r));
   h += noise.noise2(x * 0.42, z * 0.42) * 0.035;
   return h;
@@ -45,9 +45,9 @@ vec3 meadowColor(vec3 wp, float shadeNoise) {
   float patch1 = fbm2(p * 0.07 + 4.0);
   float patch2 = fbm2(p * 0.31 - 2.0);
   float fine = vnoise2(p * 6.0) * 0.6 + vnoise2(p * 23.0) * 0.4;
-  vec3 lush = vec3(0.04, 0.085, 0.02);
-  vec3 dry = vec3(0.11, 0.12, 0.04);
-  vec3 deep = vec3(0.025, 0.055, 0.016);
+  vec3 lush = vec3(0.035, 0.07, 0.02);
+  vec3 dry = vec3(0.1, 0.1, 0.04);
+  vec3 deep = vec3(0.022, 0.045, 0.016);
   vec3 c = mix(lush, dry, smoothstep(0.42, 0.7, patch1) * 0.75);
   c = mix(c, deep, smoothstep(0.55, 0.8, patch2) * 0.6);
   c *= 0.78 + 0.44 * fine;

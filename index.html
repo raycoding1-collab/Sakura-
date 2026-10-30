@@ -3,17 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sakura at Dusk</title>
-<style>
-  html, body { margin: 0; height: 100%; background: #0d0b10; overflow: hidden; }
-  canvas#scene { display: block; width: 100%; height: 100%; touch-action: none; }
-</style>
+<title>Yūzakura</title>
+<meta name="description" content="A procedurally grown cherry tree in full bloom at golden hour, rendered in real time with WebGL.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Shippori+Mincho:wght@500;600&display=swap">
+<link rel="stylesheet" href="./src/ui/style.css">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }
 </script>
 </head>
 <body>
-<canvas id="scene"></canvas>
+<canvas id="scene" aria-label="A cherry tree in full bloom at dusk, petals drifting in the wind"></canvas>
+
+<div id="loader" role="status" aria-live="polite">
+  <div class="loader-inner">
+    <div class="loader-glyph" lang="ja">桜</div>
+    <div class="loader-bar"><span id="loader-fill"></span></div>
+    <div class="loader-stage" id="loader-stage">Preparing the soil</div>
+  </div>
+</div>
+
+<div id="title" class="ui" aria-hidden="true">
+  <div class="title-ja" lang="ja">夕桜</div>
+  <div class="title-text">
+    <h1>Yūzakura</h1>
+    <p>Cherry blossoms at dusk</p>
+    <p class="title-meta" id="title-meta"></p>
+  </div>
+</div>
+
+<div id="hint" class="ui">Drag to look around <span aria-hidden="true">·</span> Scroll or pinch to move closer</div>
+
+<div id="controls" class="ui" role="toolbar" aria-label="Scene controls">
+  <button id="btn-camera" type="button" aria-pressed="true" title="Cinematic camera (C)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5" class="accent"/><path d="M10 8.8v6.4l5.2-3.2z" class="fill"/></svg>
+    <span class="sr">Cinematic camera</span>
+  </button>
+  <button id="btn-sound" type="button" aria-pressed="false" title="Sound (M)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" class="fill"/><path d="M15.5 9a4 4 0 0 1 0 6" class="on"/><path d="M17.8 6.5a7.5 7.5 0 0 1 0 11" class="on"/><path d="M16 10l4 4M20 10l-4 4" class="off"/></svg>
+    <span class="sr">Sound</span>
+  </button>
+  <button id="btn-ui" type="button" title="Hide interface (H)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8" class="fill"/></svg>
+    <span class="sr">Hide interface</span>
+  </button>
+</div>
+
+<div id="error" hidden>
+  <p>This scene needs WebGL 2 with floating-point render targets, which this browser or device does not provide.</p>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

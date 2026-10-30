@@ -8,6 +8,7 @@ export const COMMON = /* glsl */ `
 uniform float uTime;
 
 float saturate(float x) { return clamp(x, 0.0, 1.0); }
+vec2 saturate(vec2 x) { return clamp(x, 0.0, 1.0); }
 vec3 saturate(vec3 x) { return clamp(x, 0.0, 1.0); }
 float sq(float x) { return x * x; }
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
@@ -72,16 +73,16 @@ vec3 treeWind(vec3 p, vec4 w) {
   vec3 wd = vec3(uWindDir.x, 0.0, uWindDir.y);
   vec3 side = vec3(-wd.z, 0.0, wd.x);
   float h = max(p.y, 0.0);
-  float trunk = h * h * 0.00042;
+  float trunk = h * h * 0.0006;
   vec3 d = wd * trunk * (0.7 * g + 0.22 * sin(t * 0.61)) + side * trunk * 0.18 * sin(t * 0.43 + 1.0);
 
   float pa = w.z * TAU;
   float sa = sin(t * 1.05 + pa) * 0.6 + sin(t * 0.67 + pa * 2.3) * 0.4;
-  d += w.x * 0.075 * (wd * (0.75 * g + 0.45 * sa) + side * 0.45 * sin(t * 0.83 + pa * 1.7) + vec3(0.0, 0.45, 0.0) * sin(t * 1.21 + pa * 3.1) * (0.4 + g));
+  d += w.x * 0.12 * (wd * (0.75 * g + 0.45 * sa) + side * 0.45 * sin(t * 0.83 + pa * 1.7) + vec3(0.0, 0.45, 0.0) * sin(t * 1.21 + pa * 3.1) * (0.4 + g));
 
   float pb = w.w * TAU;
   float sb = sin(t * 2.1 + pb) * 0.6 + sin(t * 3.3 + pb * 1.9) * 0.4;
-  d += w.y * 0.03 * (wd * (0.6 * g + 0.6 * sb) + side * 0.6 * sin(t * 1.9 + pb * 1.3) + vec3(0.0, 0.7, 0.0) * sin(t * 2.6 + pb * 2.9) * (0.5 + g));
+  d += w.y * 0.055 * (wd * (0.6 * g + 0.6 * sb) + side * 0.6 * sin(t * 1.9 + pb * 1.3) + vec3(0.0, 0.7, 0.0) * sin(t * 2.6 + pb * 2.9) * (0.5 + g));
   return d;
 }
 `;
