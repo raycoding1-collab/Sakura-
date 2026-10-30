@@ -24,6 +24,9 @@ export const shared = {
   uShadowMatrix: { value: new THREE.Matrix4() },
   uShadowInfo: { value: new THREE.Vector4(1 / 2048, 100, 0.01, 0.012) },
 
+  uLightPos: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, -100, 0, 0.001)) },
+  uLightColor: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+
   uCanopy: { value: null },
   uCanopyMin: { value: new THREE.Vector3() },
   uCanopyInvSize: { value: new THREE.Vector3(1, 1, 1) },
@@ -39,6 +42,7 @@ export const ALL_LIGHTING = [
   'uTime', 'uSunDir', 'uSunColor', 'uSkyZenith', 'uSkyHorizon', 'uSkyAway', 'uGroundBounce',
   'uFogColor', 'uFogSunColor', 'uFogParams', 'uWindDir', 'uWindStrength', 'uGust',
   'uShadowMap', 'uShadowDepth', 'uShadowMatrix', 'uShadowInfo', 'uCanopy', 'uCanopyMin', 'uCanopyInvSize',
+  'uLightPos', 'uLightColor',
 ];
 
 export function lightingUniforms(extra = {}) {

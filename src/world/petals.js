@@ -3,7 +3,8 @@ import { RNG } from '../core/rng.js';
 import { COMMON, WIND, ATMOS, SHADOW, CANOPY } from '../render/glsl.js';
 import { lightingUniforms } from '../render/uniforms.js';
 import { PETAL_SHAPE } from '../tree/blossomMaterial.js';
-import { groundHeight } from './terrain.js';
+import { groundHeight, WATER_LEVEL } from './terrain.js';
+import { pondSDF } from '../garden/layout.js';
 
 // Loose petals: the carpet beneath the tree and the ones drifting down.
 // Both share one material — a single curled petal cut from the same signed
@@ -34,11 +35,18 @@ vec3 qrot(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w 
 void main() {
   float u = position.x, v = position.y;
   float s = iParams.x;
-  float curl = iParams.y;
+  float curl = abs(iParams.y);
   // Petal lies in local XZ, centred on its middle; it cups across and curls along.
   vec3 local = vec3(u * 0.5, curl * (u * u * 0.22 + (v - 0.45) * (v - 0.45) * 0.5), v - 0.5);
   vec3 n = normalize(vec3(-u * curl * 0.44, 1.0, -(v - 0.45) * curl * 1.0));
-  vec3 p = iPos + qrot(iQuat, local * s);
+  vec3 base = iPos;
+  if (iParams.y < 0.0) {
+    // Floating on the pond: rafts of petals circle slowly and bob on the ripples.
+    float ph = hash12(iPos.xz * 3.7) * TAU;
+    base.xz += vec2(sin(uTime * 0.045 + ph), cos(uTime * 0.038 + ph * 1.3)) * 0.5 + uWindDir * sin(uTime * 0.021 + ph) * 0.3;
+    base.y += sin(uTime * 1.3 + ph + dot(base.xz, uWindDir) * 2.0) * 0.003;
+  }
+  vec3 p = base + qrot(iQuat, local * s);
   vWorld = p;
   vNormal = qrot(iQuat, n);
   vUv = vec2(u, v);
@@ -149,13 +157,14 @@ export function createGroundPetals({ flowers, count = 40000, seed = 5, windDir =
       x = Math.cos(a) * d + rng.gauss() * 2;
       z = Math.sin(a) * d + rng.gauss() * 2;
     }
-    const lift = Math.pow(rng.next(), 2.2) * 0.09;
+    const floating = pondSDF(x, z) < -0.15;
+    const lift = floating ? 0 : Math.pow(rng.next(), 2.2) * 0.09;
     P[i * 3] = x;
-    P[i * 3 + 1] = groundHeight(x, z) + 0.004 + lift;
+    P[i * 3 + 1] = floating ? WATER_LEVEL + 0.004 : groundHeight(x, z) + 0.004 + lift;
     P[i * 3 + 2] = z;
-    quatFromYawTilt(Q, i * 4, rng.range(0, Math.PI * 2), rng.sym(0.35 + lift * 6), rng.sym(0.35 + lift * 6), rng.chance(0.4));
+    quatFromYawTilt(Q, i * 4, rng.range(0, Math.PI * 2), floating ? rng.sym(0.06) : rng.sym(0.35 + lift * 6), floating ? rng.sym(0.06) : rng.sym(0.35 + lift * 6), rng.chance(0.4));
     S[i * 4] = rng.range(0.017, 0.024);
-    S[i * 4 + 1] = rng.range(0.1, 0.9);
+    S[i * 4 + 1] = rng.range(0.1, 0.9) * (floating ? -0.5 : 1);
     S[i * 4 + 2] = rng.next();
     S[i * 4 + 3] = rng.next();
   }
@@ -173,7 +182,8 @@ export function createGroundPetals({ flowers, count = 40000, seed = 5, windDir =
 const AIR = 0, LANDED = 1, FADING = 2;
 
 export class FallingPetals {
-  constructor({ flowers, capacity = 5000, seed = 77, windDir, gustField }) {
+  constructor({ flowers, capacity = 5000, seed = 77, windDir, gustField, onSplash = null }) {
+    this.onSplash = onSplash;
     this.rng = new RNG(seed);
     this.capacity = capacity;
     this.windDir = windDir;
@@ -332,13 +342,19 @@ export class FallingPetals {
       P[i * 3] = x + vel[i * 3] * dt;
       P[i * 3 + 1] = y + vel[i * 3 + 1] * dt;
       P[i * 3 + 2] = z + vel[i * 3 + 2] * dt;
-      const gy = groundHeight(P[i * 3], P[i * 3 + 2]) + this.restY[i];
+      const onWater = pondSDF(P[i * 3], P[i * 3 + 2]) < -0.1;
+      const gy = onWater ? WATER_LEVEL + 0.004 : groundHeight(P[i * 3], P[i * 3 + 2]) + this.restY[i];
       if (P[i * 3 + 1] <= gy) {
         P[i * 3 + 1] = gy;
         this.state[i] = LANDED;
         this.timer[i] = 0;
         this.airborne--;
-        quatFromYawTilt(Q, i * 4, rng.range(0, Math.PI * 2), rng.sym(0.3), rng.sym(0.3), ny < 0);
+        quatFromYawTilt(Q, i * 4, rng.range(0, Math.PI * 2), onWater ? rng.sym(0.05) : rng.sym(0.3), onWater ? rng.sym(0.05) : rng.sym(0.3), ny < 0);
+        if (onWater) {
+          S[i * 4 + 1] = -Math.abs(S[i * 4 + 1]) * 0.5;
+          this.life[i] *= 2.5;
+          if (this.onSplash && !warm) this.onSplash(P[i * 3], P[i * 3 + 2], time);
+        }
       } else if (Math.hypot(P[i * 3], P[i * 3 + 2]) > 70 || t > 90) {
         this.state[i] = FADING;
         this.timer[i] = 0.5;

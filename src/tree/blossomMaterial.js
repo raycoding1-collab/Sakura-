@@ -154,9 +154,10 @@ float petalSDF(vec2 p) {
 vec3 petalAlbedo(vec2 p, float d, float tint, float age, float open, float shade) {
   float y = p.y;
   vec3 white = vec3(0.97, 0.9, 0.92);
-  vec3 body = mix(vec3(0.95, 0.72, 0.79), vec3(0.92, 0.55, 0.68), tint);
+  vec3 body = tint < 0.5 ? mix(vec3(0.95, 0.74, 0.8), vec3(0.92, 0.55, 0.68), tint * 2.0)
+                         : mix(vec3(0.92, 0.55, 0.68), vec3(0.86, 0.36, 0.54), tint * 2.0 - 1.0);
   vec3 heart = mix(vec3(0.8, 0.24, 0.4), vec3(0.6, 0.08, 0.2), age);
-  vec3 col = mix(body, white, smoothstep(0.3, 1.0, y) * (0.6 - tint * 0.3));
+  vec3 col = mix(body, white, smoothstep(0.3, 1.0, y) * (0.6 - tint * 0.42));
   col = mix(heart, col, smoothstep(0.02, 0.26 + age * 0.12, y));
   // Buds carry deeper colour on the outside.
   col = mix(mix(vec3(0.86, 0.32, 0.47), col, 0.3), col, smoothstep(0.15, 0.7, open));

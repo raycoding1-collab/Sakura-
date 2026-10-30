@@ -2,17 +2,20 @@ import * as THREE from 'three';
 import { shared } from './render/uniforms.js';
 import { applyAtmosphere } from './world/atmosphere.js';
 import { createSky } from './world/sky.js';
-import { createTerrain, groundHeight } from './world/terrain.js';
+import { createTerrain, groundHeight, WATER_LEVEL } from './world/terrain.js';
 import { createGrass } from './world/grass.js';
 import { createGroundPetals, FallingPetals } from './world/petals.js';
 import { createMotes } from './world/motes.js';
 import { gustField, gustEnvelope } from './world/wind.js';
 import { generateSkeleton } from './tree/skeleton.js';
+import { WEEPING_CHERRY, YOSHINO_CHERRY } from './tree/species.js';
 import { buildBarkMesh } from './tree/barkMesh.js';
 import { createBarkMaterials, createBarkGeometry } from './tree/barkMaterial.js';
 import { placeBlossoms, flowerBaseMesh, flowerCardMesh, packFlowers } from './tree/blossoms.js';
 import { createBlossomMaterials, createBlossomGeometry, BlossomDetail } from './tree/blossomMaterial.js';
 import { buildCanopyGrid } from './tree/canopyGrid.js';
+import { createGarden } from './garden/garden.js';
+import { createWater, PlanarReflection } from './garden/water.js';
 import { SunShadow } from './render/shadows.js';
 import { PostPipeline } from './render/post.js';
 import { CinematicCamera } from './camera/cinematic.js';
@@ -24,9 +27,9 @@ const seed = parseInt(params.get('seed') || '7', 10);
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 const PRESETS = {
-  high: { flowers: 1.0, grass: 320000, carpet: 42000, falling: 5000, motes: 1100, shadow: 4096, samples: 4, dof: true, pixels: 2.5e6 },
-  medium: { flowers: 0.72, grass: 180000, carpet: 30000, falling: 3600, motes: 900, shadow: 2048, samples: 4, dof: true, pixels: 1.5e6 },
-  low: { flowers: 0.5, grass: 80000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6 },
+  high: { flowers: 0.75, grass: 160000, carpet: 42000, falling: 5000, motes: 1100, shadow: 4096, samples: 4, dof: true, pixels: 2.6e6, reflect: 0.5, reflectFlowers: 0.45 },
+  medium: { flowers: 0.5, grass: 90000, carpet: 30000, falling: 3600, motes: 900, shadow: 2048, samples: 4, dof: true, pixels: 1.5e6, reflect: 0.35, reflectFlowers: 0.3 },
+  low: { flowers: 0.32, grass: 40000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6, reflect: 0, reflectFlowers: 0 },
 };
 
 function detectQuality(gl) {
@@ -70,12 +73,13 @@ async function boot() {
   // ---- Grow the tree ----------------------------------------------------------
   ui.progress(0.05, 'Growing branches');
   await nextFrame();
-  const skel = generateSkeleton(seed, { groundAt: groundHeight });
+  const species = params.get('tree') === 'yoshino' ? YOSHINO_CHERRY : WEEPING_CHERRY;
+  const skel = generateSkeleton(seed, { species, groundAt: groundHeight, waterLevel: WATER_LEVEL });
   const branchCount = skel.branches.filter((b) => b.kind === 'wood').length;
 
   ui.progress(0.2, `${fmt(branchCount)} branches · laying down bark`);
   await nextFrame();
-  const barkData = buildBarkMesh(skel, { groundAt: groundHeight });
+  const barkData = buildBarkMesh(skel, { groundAt: groundHeight, ancient: species === WEEPING_CHERRY, hiRes: qualityName !== 'low' });
   const barkGeo = createBarkGeometry(barkData);
   const barkMats = createBarkMaterials();
   const bark = new THREE.Mesh(barkGeo, barkMats.color);
@@ -113,7 +117,7 @@ async function boot() {
   }
   const packed = packFlowers(flowers, light);
   const blossomMats = createBlossomMaterials();
-  blossomMats.uniforms.uFlowerScale.value = Math.min(1.22, 1 / Math.sqrt(Q.flowers));
+  blossomMats.uniforms.uFlowerScale.value = Math.min(1.35, Math.pow(Q.flowers, -0.42));
   const blossomGeo = createBlossomGeometry(flowerCardMesh(), packed);
   const blossomShadowGeo = createBlossomGeometry(flowerCardMesh(), packed, blossomGeo);
   blossomGeo.instanceCount = blossomShadowGeo.instanceCount = flowerCount;
@@ -133,19 +137,30 @@ async function boot() {
   scene.add(sky);
   const terrain = createTerrain();
   scene.add(terrain);
+  const garden = createGarden({ skel, bark: barkData, groundAt: groundHeight, waterLevel: WATER_LEVEL });
+  scene.add(garden.mesh);
+  scene.add(garden.rocker);
+  garden.lights.forEach((L, i) => {
+    if (i >= shared.uLightPos.value.length) return;
+    shared.uLightPos.value[i].set(L.pos[0], L.pos[1], L.pos[2], L.range);
+  });
   const windDir = [shared.uWindDir.value.x, shared.uWindDir.value.y];
   const grass = createGrass({ count: Q.grass, treeFoot: [0, 0] });
   scene.add(grass.mesh);
   const carpet = createGroundPetals({ flowers, count: Q.carpet, windDir });
   scene.add(carpet.mesh);
-  const falling = new FallingPetals({ flowers, capacity: Q.falling, windDir, gustField });
+  const water = createWater(WATER_LEVEL);
+  scene.add(water.mesh);
+  const reflection = Q.reflect > 0 ? new PlanarReflection(renderer) : null;
+  if (reflection) reflection.scale = Q.reflect;
+  const falling = new FallingPetals({ flowers, capacity: Q.falling, windDir, gustField, onSplash: (x, z, t) => water.addImpact(x, z, t, 1) });
   scene.add(falling.mesh);
   const motes = createMotes({ count: Q.motes });
   scene.add(motes.points);
 
   {
     const hide = (params.get('hide') || '').split(',');
-    const named = { sky, terrain, bark, blossoms, grass: grass.mesh, carpet: carpet.mesh, falling: falling.mesh, motes: motes.points };
+    const named = { sky, terrain, bark, blossoms, grass: grass.mesh, carpet: carpet.mesh, falling: falling.mesh, motes: motes.points, garden: garden.mesh, water: water.mesh };
     for (const k of hide) if (named[k]) named[k].visible = false;
   }
 
@@ -153,6 +168,8 @@ async function boot() {
   shadow.add(barkGeo, barkMats.depth);
   shadow.add(blossomShadowGeo, blossomMats.depth);
   shadow.add(falling.geometry, falling.materials.depth);
+  shadow.add(garden.geometry, garden.materials.depth);
+  shadow.scene.add(garden.rockerShadow);
   shadow.update(shared.uSunDir.value);
 
   const post = new PostPipeline(renderer, { timeUniform: shared.uTime, samples: Q.samples, dof: Q.dof });
@@ -212,6 +229,7 @@ async function boot() {
     camera.fov = w / h < 0.8 ? 58 : 40;
     camera.updateProjectionMatrix();
     post.setSize(w, h);
+    if (reflection) reflection.setSize(w, h);
     motes.material.uniforms.uPixelScale.value = h / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   };
   window.addEventListener('resize', resize);
@@ -256,8 +274,31 @@ async function boot() {
     blossomMats.uniforms.uViewPos.value.copy(camera.position);
     detail.update(camera.position, blossomMats.uniforms.uDetailDist.value);
     audio.update(shared.uGust.value);
+    garden.update(time, () => audio.knock && audio.knock());
+    garden.lights.forEach((L, i) => {
+      if (i >= shared.uLightColor.value.length) return;
+      const fl = 0.86 + 0.08 * Math.sin(time * 9.1 + i * 2.3) + 0.06 * Math.sin(time * 23.7 + i * 5.1);
+      shared.uLightColor.value[i].set(L.color[0] * L.power * fl, L.color[1] * L.power * fl, L.color[2] * L.power * fl, 0);
+    });
 
     shadow.render();
+    if (reflection) {
+      // Mirror pass: lighter scene (no grass, motes or close-up flowers).
+      const hidden = [grass.mesh, motes.points, blossomsNear, water.mesh];
+      const fullCount = blossomGeo.instanceCount;
+      const ok = reflection.render(scene, camera, WATER_LEVEL, (vc) => {
+        for (const o of hidden) o.visible = false;
+        blossomGeo.instanceCount = Math.floor(fullCount * Q.reflectFlowers / Q.flowers);
+        sky.userData.update(vc, time);
+      }, () => {
+        for (const o of hidden) o.visible = true;
+        blossomGeo.instanceCount = fullCount;
+        sky.userData.update(camera, time);
+      });
+      water.material.uniforms.uHasReflection.value = ok ? 1 : 0;
+      water.material.uniforms.uReflection.value = reflection.target.texture;
+      water.material.uniforms.uTexMatrix.value.copy(reflection.textureMatrix);
+    }
     fadeIn = Math.min(1, fadeIn + Math.min(raw, 0.25) / 3.5);
     post.params.fade = fadeIn * fadeIn * (3 - 2 * fadeIn);
     post.params.focus = cine.focus;

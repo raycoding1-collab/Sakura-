@@ -2,20 +2,25 @@ import * as THREE from 'three';
 import { COMMON, WIND, ATMOS, SHADOW, CANOPY } from '../render/glsl.js';
 import { lightingUniforms } from '../render/uniforms.js';
 
-// Cherry bark, painted procedurally in cylinder space:
-//  - young wood: glossy mahogany skin banded with pale horizontal lenticels
-//  - old wood: dark, rough, horizontally peeling strips split by long fissures
-//  - grey-green lichen on upward faces, moss where roots meet the soil.
+// Cherry bark, painted procedurally in cylinder space, by age of the wood:
+//  - young shoots: glossy mahogany skin banded with pale horizontal lenticels
+//  - mature limbs: darker skin breaking into horizontally elongated plates
+//  - the ancient trunk and roots: deep furrows following the spiral grain of
+//    the fused stems, rough ridges between them, lichen and moss
+// plus the rotten heartwood of the hollow, its pale callus lips, and the
+// ringed faces of old pruning cuts.
 
 const vertexShader = COMMON + WIND + /* glsl */ `
 attribute vec2 aCyl;
 attribute vec4 aBark;
 attribute vec4 aWind;
+attribute float aFeature;
 varying vec3 vWorld;
 varying vec3 vRest;
 varying vec3 vNormal;
 varying vec2 vCyl;
 varying vec4 vBark;
+varying float vFeature;
 void main() {
   vec3 p = position + treeWind(position, aWind);
   vWorld = p;
@@ -23,6 +28,7 @@ void main() {
   vNormal = normal;
   vCyl = aCyl;
   vBark = aBark;
+  vFeature = aFeature;
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }
 `;
@@ -33,9 +39,8 @@ varying vec3 vRest;
 varying vec3 vNormal;
 varying vec2 vCyl;
 varying vec4 vBark;
+varying float vFeature;
 
-// Cellular noise: distances to the nearest and second-nearest feature point,
-// plus a stable random id of the nearest cell.
 vec3 voronoi3(vec3 p) {
   vec3 i = floor(p), f = fract(p);
   float d1 = 8.0, d2 = 8.0, id = 0.0;
@@ -55,6 +60,8 @@ vec3 voronoi3(vec3 p) {
 // Feature fade: kills pattern octaves smaller than ~2 pixels.
 float band(float size, float footprint) { return 1.0 - smoothstep(size * 0.6, size * 2.5, footprint); }
 
+vec2 rot2(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
+
 void main() {
 #ifdef DEPTH_PASS
   gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
@@ -64,21 +71,24 @@ void main() {
   float r = vBark.x;
   float s = vBark.y;
   float ao = saturate(vBark.z);
-  float seed = fract(vBark.w);
-  float isRoot = step(0.45, seed);
+  float code = fract(vBark.w);
+  float isRoot = step(0.47, code) * step(code, 0.76);
+  float isCut = step(0.35, code) * step(code, 0.45);
+  float seed = fract(code * 4.0);
   float age = smoothstep(0.03, 0.24, r);
+  float ancient = smoothstep(0.3, 0.55, r) + isRoot * smoothstep(0.08, 0.2, r);
+  ancient = saturate(ancient);
+  float hollowIn = smoothstep(0.55, 0.9, vFeature);
+  float lipM = vFeature > 0.0 && vFeature < 0.55 ? vFeature * 2.0 : 0.0;
   float foot = length(fwidth(vWorld));
-
-  // Cylinder coordinates: around (arc metres) and along (metres).
   vec2 cyl = vCyl;
-  vec3 lq = vec3(cyl * 34.0, s * 230.0 + seed * 40.0);
-  float lent = smoothstep(0.66, 0.82, vnoise3(lq)) * band(0.004, foot);
+
+  // ---- Young skin --------------------------------------------------------------
+  float lent = smoothstep(0.66, 0.82, vnoise3(vec3(cyl * 34.0, s * 230.0 + seed * 40.0))) * band(0.004, foot);
   float grain = vnoise3(vec3(cyl * 120.0, s * 40.0)) * band(0.003, foot);
 
-  // Old bark: the skin breaks into horizontally elongated plates (cellular
-  // noise in cylinder space) split by dark crevices, crossed by lenticel scars
-  // and the occasional long vertical fissure.
-  float oldDetail = band(0.018, foot) * smoothstep(0.1, 0.24, r);
+  // ---- Mature plates -----------------------------------------------------------
+  float oldDetail = band(0.018, foot) * smoothstep(0.1, 0.24, r) * (1.0 - ancient);
   vec2 warp = vec2(vnoise3(vec3(cyl * 3.0, s * 1.5)), vnoise3(vec3(cyl * 3.0 + 9.0, s * 1.5))) - 0.5;
   vec3 pq = vec3(cyl * 5.5 + warp * 1.4, s * 24.0 + warp.x * 3.0);
   vec3 vor = oldDetail > 0.0 ? voronoi3(pq) : vec3(0.0, 1.0, 0.5);
@@ -87,20 +97,38 @@ void main() {
   float crev = smoothstep(0.015, 0.06 + 0.12 * depthVar, edge);
   crev = mix(1.0, mix(1.0, crev, 0.35 + 0.65 * depthVar), oldDetail);
   float plate = (0.6 + 0.4 * vor.z) * crev;
-  // Softer profile for the relief: sharp edges alias under screen-space bump.
   float crevSoft = mix(1.0, smoothstep(0.0, 0.32, edge), oldDetail * (0.35 + 0.65 * depthVar));
   float plateSoft = (0.6 + 0.4 * vor.z) * crevSoft;
   float strips = vnoise3(vec3(cyl * 6.0 + warp.x * 2.0, s * 15.0 + 3.0));
-  float stripsB = vnoise3(vec3(cyl * 16.0, s * 90.0 + warp.y * 6.0));
   float scars = smoothstep(0.62, 0.8, vnoise3(vec3(cyl * 10.0, s * 140.0))) * band(0.004, foot);
-  float fissN = 1.0 - abs(vnoise3(vec3(cyl * 11.0 + warp * 3.0, s * 1.8 + vRest.y * 0.4)) * 2.0 - 1.0);
-  float fiss = smoothstep(0.8, 0.99, fissN) * band(0.03, foot) * 0.6;
-  float rough = fbm3(vRest * 34.0) * band(0.006, foot);
-  float hOld = plateSoft * 0.75 + stripsB * 0.18 * band(0.006, foot) + scars * 0.15 + rough * 0.3 - fiss * 0.7;
-  float hYoung = lent * 0.5 + grain * 0.15;
-  float h = mix(hYoung * 0.0012, hOld * 0.009, age);
 
-  // Bump from the procedural height (world-scaled Mikkelsen perturbation).
+  // ---- Ancient furrowed bark along the spiral grain ----------------------------
+  // Rotating the cylinder coordinates with height aligns the pattern with the
+  // twist of the fused stems: long furrows wind around the trunk.
+  vec2 sc = rot2(cyl, -s * 0.5 * (1.0 - isRoot));
+  float fwarp = vnoise3(vec3(sc * 2.2, s * 0.8)) - 0.5;
+  float furrowN = vnoise3(vec3(sc * 14.0 + fwarp * 1.5, s * 1.6));
+  float furrow = 1.0 - abs(furrowN * 2.0 - 1.0);
+  float furrowD = smoothstep(0.62, 0.97, furrow) * band(0.025, foot);
+  float ridgeRough = vnoise3(vec3(sc * 40.0, s * 9.0)) * band(0.008, foot);
+  float crossCrack = smoothstep(0.8, 0.93, vnoise3(vec3(sc * 22.0, s * 55.0))) * band(0.01, foot) * (1.0 - furrowD) * 0.6;
+  float flake = vnoise3(vec3(sc * 7.0, s * 4.0));
+  float hAnc = (1.0 - furrowD) * (0.7 + 0.3 * ridgeRough) - crossCrack * 0.35 + flake * 0.2;
+
+  float hYoung = lent * 0.5 + grain * 0.15;
+  float hMature = plateSoft * 0.75 + scars * 0.15;
+  float h = mix(mix(hYoung * 0.0012, hMature * 0.009, age), hAnc * 0.02, ancient);
+  h *= 1.0 - hollowIn;
+
+  // Rings on the cut faces of pruned stubs.
+  float rings = 0.0;
+  if (isCut > 0.5) {
+    float rr = length(cyl) / max(r, 1e-3);
+    float wob = vnoise3(vec3(cyl * 30.0, seed * 10.0)) * 0.08;
+    rings = 0.5 + 0.5 * cos((rr + wob) * 46.0);
+    h = rings * 0.0008 + (1.0 - smoothstep(0.82, 1.0, rr)) * 0.0;
+  }
+
   vec3 dpx = dFdx(vWorld), dpy = dFdy(vWorld);
   vec2 dh = vec2(dFdx(h), dFdy(h));
   vec3 r1 = cross(dpy, n), r2 = cross(n, dpx);
@@ -108,45 +136,66 @@ void main() {
   vec3 nb = abs(det) * n - sign(det) * (dh.x * r1 + dh.y * r2);
   nb = dot(nb, nb) > 1e-20 ? normalize(nb) : n;
 
-  // Albedo.
+  // ---- Albedo --------------------------------------------------------------------
   vec3 young = mix(vec3(0.07, 0.036, 0.034), vec3(0.1, 0.055, 0.048), grain);
-  young = mix(young, vec3(0.26, 0.21, 0.17), lent);
+  young = mix(young, vec3(0.18, 0.145, 0.12), lent * 0.5);
   float plateTone = fract(vor.z * 7.13);
-  vec3 old = mix(vec3(0.026, 0.021, 0.02), vec3(0.052, 0.043, 0.04), smoothstep(0.3, 0.9, plate) * (0.6 + 0.4 * strips));
-  old = mix(old, vec3(0.085, 0.045, 0.036), smoothstep(0.82, 0.98, plateTone) * 0.7);
-  old = mix(old, vec3(0.11, 0.098, 0.092), smoothstep(0.55, 0.85, stripsB) * 0.25);
-  old = mix(old, vec3(0.16, 0.13, 0.105), scars * 0.5);
-  old = mix(old, vec3(0.012, 0.01, 0.01), max(1.0 - crev, fiss * 0.7) * 0.85);
-  vec3 albedo = mix(young, old, age);
+  vec3 mature = mix(vec3(0.03, 0.024, 0.022), vec3(0.058, 0.048, 0.044), smoothstep(0.3, 0.9, plate) * (0.6 + 0.4 * strips));
+  mature = mix(mature, vec3(0.08, 0.045, 0.036), smoothstep(0.84, 0.98, plateTone) * 0.6);
+  mature = mix(mature, vec3(0.12, 0.1, 0.085), scars * 0.35);
+  mature = mix(mature, vec3(0.012, 0.01, 0.01), (1.0 - crev) * 0.85);
+  vec3 anc = mix(vec3(0.036, 0.031, 0.029), vec3(0.068, 0.061, 0.056), smoothstep(0.35, 0.85, flake) * (0.6 + 0.4 * ridgeRough));
+  anc = mix(anc, vec3(0.095, 0.088, 0.08), smoothstep(0.6, 0.9, ridgeRough) * 0.35 * (1.0 - furrowD));
+  anc = mix(anc, vec3(0.014, 0.011, 0.01), furrowD * 0.9);
+  anc = mix(anc, vec3(0.02, 0.016, 0.014), crossCrack * 0.7);
+  vec3 albedo = mix(mix(young, mature, age), anc, ancient);
 
-  // Lichen on the tops of older limbs.
+  // Hollow: crumbling dark heartwood with fibrous streaks; pale callus lips.
+  if (hollowIn > 0.0) {
+    float fib = vnoise3(vec3(vRest.x * 30.0, vRest.y * 4.0, vRest.z * 30.0));
+    vec3 rot = mix(vec3(0.016, 0.01, 0.007), vec3(0.045, 0.027, 0.015), fib);
+    albedo = mix(albedo, rot, hollowIn);
+  }
+  albedo = mix(albedo, vec3(0.15, 0.11, 0.085), lipM * 0.6);
+
+  if (isCut > 0.5) {
+    vec3 wood = mix(vec3(0.16, 0.12, 0.085), vec3(0.24, 0.2, 0.15), rings);
+    float rr = length(cyl) / max(r, 1e-3);
+    wood = mix(wood, vec3(0.07, 0.045, 0.03), smoothstep(0.0, 0.35, 1.0 - rr) * 0.5);
+    wood = mix(wood, vec3(0.05, 0.035, 0.03), smoothstep(0.85, 1.0, rr));
+    albedo = wood;
+  }
+
+  // Lichen and moss.
   float upward = saturate(nb.y * 1.4 - 0.1);
   float lichN = fbm3(vRest * 3.1) + vnoise3(vRest * 17.0) * 0.25;
-  float lich = smoothstep(0.62, 0.8, lichN) * mix(upward, 0.35, age * 0.6) * smoothstep(0.02, 0.12, r);
-  lich *= smoothstep(0.35, 0.6, vnoise3(vRest * 9.0));
-  albedo = mix(albedo, mix(vec3(0.17, 0.19, 0.15), vec3(0.27, 0.28, 0.23), vnoise3(vRest * 40.0)), lich * 0.6);
-  // Moss and earth where wood meets the soil.
-  float low = 1.0 - smoothstep(0.0, mix(0.5, 0.12, isRoot), vWorld.y + 0.1);
+  float lich = smoothstep(0.62, 0.8, lichN) * mix(upward, 0.3, ancient) * smoothstep(0.02, 0.12, r);
+  lich *= smoothstep(0.35, 0.6, vnoise3(vRest * 9.0)) * (1.0 - hollowIn) * (1.0 - isCut);
+  albedo = mix(albedo, mix(vec3(0.14, 0.16, 0.12), vec3(0.24, 0.25, 0.2), vnoise3(vRest * 40.0)), lich * 0.5);
+  float mossFurrow = furrowD * ancient * smoothstep(0.45, 0.7, fbm3(vRest * 2.0));
+  float low = 1.0 - smoothstep(0.0, mix(0.6, 0.15, isRoot), vWorld.y + 0.15);
   float mossN = smoothstep(0.35, 0.65, fbm3(vRest * 6.0));
-  albedo = mix(albedo, mix(vec3(0.05, 0.075, 0.025), vec3(0.08, 0.06, 0.04), mossN), low * 0.75);
+  float moss = max(low * 0.8, mossFurrow * 0.5) * (1.0 - hollowIn);
+  albedo = mix(albedo, mix(vec3(0.04, 0.08, 0.02), vec3(0.08, 0.11, 0.03), mossN), moss);
 
-  float roughness = mix(0.42, 0.88, age);
-  roughness = mix(roughness, 0.95, max(lich, low));
+  float roughness = mix(0.45, 0.9, max(age, ancient));
+  roughness = mix(roughness, 0.95, max(lich, moss));
 
-  // Lighting.
+  // ---- Lighting --------------------------------------------------------------------
   vec3 v = normalize(cameraPosition - vWorld);
   vec3 l = uSunDir;
   float rot = ign(gl_FragCoord.xy) * TAU;
   float sh = shadowSoft(vWorld + n * 0.02, 0.02, rot);
   vec2 cl = canopyLight(vWorld);
   float ndl = saturate(dot(nb, l));
-  float cavity = mix(1.0, saturate(0.35 + plateSoft * 0.75), age) * (1.0 - fiss * 0.6 * age);
+  float cavity = mix(mix(1.0, saturate(0.35 + plateSoft * 0.75), age), saturate(0.3 + hAnc * 0.85), ancient);
+  cavity *= 1.0 - hollowIn * 0.6;
   vec3 sun = uSunColor * ndl * sh;
   vec3 amb = ambientLight(nb) * (0.25 + 0.75 * cl.r) * ao * cavity;
-  // Faint warm bounce from the sunlit blossoms around the limbs.
   amb += vec3(1.0, 0.72, 0.74) * uSunColor * 0.012 * cl.r * (1.0 - cl.g) * ao;
-  vec3 col = albedo * (sun + amb);
-  col += uSunColor * ggxSpec(nb, v, l, roughness) * sh * mix(0.6, 0.25, age);
+  vec3 lamp = localLight(vWorld + n * 0.05, nb, 0.1) * ao;
+  vec3 col = albedo * (sun + amb + lamp);
+  col += uSunColor * ggxSpec(nb, v, l, roughness) * sh * mix(0.5, 0.15, max(age, ancient));
   col = applyFog(col, vWorld);
   gl_FragColor = vec4(col, 1.0);
 #endif
@@ -167,6 +216,7 @@ export function createBarkGeometry(mesh) {
   geo.setAttribute('aCyl', new THREE.BufferAttribute(mesh.cyl, 2));
   geo.setAttribute('aBark', new THREE.BufferAttribute(mesh.bark, 4));
   geo.setAttribute('aWind', new THREE.BufferAttribute(mesh.wind, 4));
+  geo.setAttribute('aFeature', new THREE.BufferAttribute(mesh.feature, 1));
   geo.setIndex(new THREE.BufferAttribute(mesh.index, 1));
   geo.computeBoundingSphere();
   return geo;

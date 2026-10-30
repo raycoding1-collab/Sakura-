@@ -130,6 +130,24 @@ vec3 applyFog(vec3 col, vec3 wpos) {
   return mix(col, fogInscatter(rd), f);
 }
 
+// Lantern light: a handful of warm point lights (stone lanterns, bonbori).
+#define NUM_LIGHTS 8
+uniform vec4 uLightPos[NUM_LIGHTS];   // xyz position, w range
+uniform vec4 uLightColor[NUM_LIGHTS]; // rgb radiant intensity
+vec3 localLight(vec3 p, vec3 n, float wrap) {
+  vec3 sum = vec3(0.0);
+  for (int i = 0; i < NUM_LIGHTS; i++) {
+    vec3 d = uLightPos[i].xyz - p;
+    float d2 = dot(d, d);
+    float rr = uLightPos[i].w * uLightPos[i].w;
+    float fall = sq(saturate(1.0 - d2 / rr));
+    if (fall <= 0.0) continue;
+    float ndl = saturate((dot(n, d * inversesqrt(d2 + 1e-6)) + wrap) / (1.0 + wrap));
+    sum += uLightColor[i].rgb * fall * ndl / (d2 + 0.04);
+  }
+  return sum;
+}
+
 // Cheap GGX specular for a single directional light.
 float ggxSpec(vec3 n, vec3 v, vec3 l, float rough) {
   vec3 h = normalize(v + l);

@@ -37,6 +37,7 @@ function quatMul(out, a, b) {
 export function placeBlossoms(skel, opts = {}) {
   const rng = new RNG((skel.seed || 1) * 977 + 13);
   const density = opts.density ?? 1;
+  const look = skel.species?.blossom ?? { pink: 0.4, sizeScale: 1.42 };
   const cx = skel.crown.c[0], cz = skel.crown.c[2];
 
   const flowers = [];
@@ -44,7 +45,7 @@ export function placeBlossoms(skel, opts = {}) {
   const P = [0, 0, 0], T = [0, 0, 0], side = [0, 0, 0], tmp = [0, 0, 0], q = [0, 0, 0, 1], qr = [0, 0, 0, 1];
   const UP = [0, 1, 0];
 
-  const addCluster = (b, s, terminal) => {
+  const addCluster = (b, s, terminal, hanging = false) => {
     b.pointAt(s, P);
     b.tangentAt(s, T);
     const r = b.radiusAt(s);
@@ -54,10 +55,14 @@ export function placeBlossoms(skel, opts = {}) {
     const ox = P[0] - cx, oz = P[2] - cz;
     const ol = Math.hypot(ox, oz) || 1;
     const out = [ox / ol, 0, oz / ol];
+    // Spurs on hanging branchlets turn outward and nod down; elsewhere they
+    // reach up and out toward the light.
+    const lift = hanging ? -0.1 : 0.35;
+    const outK = hanging ? 0.7 : 0.45;
     const dir = [
-      side[0] * 0.9 + out[0] * 0.45 + T[0] * (terminal ? 0.9 : 0.25),
-      side[1] * 0.9 + 0.35 + T[1] * (terminal ? 0.9 : 0.25),
-      side[2] * 0.9 + out[2] * 0.45 + T[2] * (terminal ? 0.9 : 0.25),
+      side[0] * 0.9 + out[0] * outK + T[0] * (terminal ? 0.9 : 0.25),
+      side[1] * 0.9 + lift + T[1] * (terminal ? 0.9 : 0.25),
+      side[2] * 0.9 + out[2] * outK + T[2] * (terminal ? 0.9 : 0.25),
     ];
     V.normalize(dir);
     const spur = terminal ? 0.004 : rng.range(0.004, 0.012);
@@ -74,7 +79,7 @@ export function placeBlossoms(skel, opts = {}) {
       // Pedicel direction fans out from the spur and droops under the flower's weight.
       rng.unitVector(tmp);
       const fd = V.normalize([0, 0, 0], [dir[0] + tmp[0] * 0.85, dir[1] + tmp[1] * 0.85 - 0.25, dir[2] + tmp[2] * 0.85]);
-      const ped = rng.range(0.018, 0.034);
+      const ped = hanging ? rng.range(0.024, 0.048) : rng.range(0.018, 0.034);
       const pos = [anchor[0] + fd[0] * ped, anchor[1] + fd[1] * ped - ped * 0.25, anchor[2] + fd[2] * ped];
       // Flower faces along the pedicel, nodding slightly downward/outward.
       const face = V.normalize([0, 0, 0], [fd[0] + dir[0] * 0.3, fd[1] - 0.18, fd[2] + dir[2] * 0.3]);
@@ -85,7 +90,7 @@ export function placeBlossoms(skel, opts = {}) {
 
       const stage = rng.next();
       // Slightly larger than life so the crown reads as a cloud from afar.
-      let open, scale = rng.range(0.0165, 0.0205) * 1.42;
+      let open, scale = rng.range(0.0165, 0.0205) * look.sizeScale;
       if (stage < 0.07) { open = rng.range(0.0, 0.16); scale *= 0.8; }
       else if (stage < 0.17) { open = rng.range(0.35, 0.75); scale *= 0.92; }
       else open = rng.range(0.86, 1.0);
@@ -98,7 +103,7 @@ export function placeBlossoms(skel, opts = {}) {
       flowers.push({
         pos, quat: [q[0], q[1], q[2], q[3]], anchor,
         scale, open,
-        tint: V.clamp(pinkCluster * 0.7 + rng.next() * 0.3, 0, 1),
+        tint: V.clamp(look.pink + (pinkCluster - 0.5) * 0.55 + (rng.next() - 0.5) * 0.25, 0, 1),
         age: rng.next(),
         mask,
         phase: rng.next(),
@@ -110,6 +115,18 @@ export function placeBlossoms(skel, opts = {}) {
   };
 
   for (const b of skel.branches) {
+    if (b.kind === 'weep') {
+      // Strings of blossom all down the hanging branchlets.
+      const L = b.length;
+      const gap = 0.088 / density;
+      let s = 0.1 + rng.range(0, gap);
+      while (s < L - 0.01) {
+        addCluster(b, s, false, true);
+        s += gap * rng.range(0.7, 1.3);
+      }
+      addCluster(b, L, true, true);
+      continue;
+    }
     if (b.kind !== 'wood' || b.depth < 3) continue;
     const L = b.length;
     let start, gap;

@@ -3,6 +3,7 @@ import { RNG } from '../core/rng.js';
 import { COMMON, WIND, ATMOS, SHADOW, CANOPY } from '../render/glsl.js';
 import { lightingUniforms } from '../render/uniforms.js';
 import { groundHeight } from './terrain.js';
+import { pondSDF, gravelSDF, GARDEN_R } from '../garden/layout.js';
 
 // Meadow of instanced grass blades. Each blade is a tapered, curved strip that
 // leans along its own heading and bows under travelling gusts. Blades glow when
@@ -28,7 +29,7 @@ function bladeMesh() {
   return { position: new Float32Array(pos), index: new Uint16Array(index) };
 }
 
-export function createGrass({ count = 200000, radius = 34, seed = 99, treeFoot = [0, 0] } = {}) {
+export function createGrass({ count = 200000, radius = 46, seed = 99, treeFoot = [0, 0] } = {}) {
   const rng = new RNG(seed);
   const iBlade = new Float32Array(count * 4);
   const iShape = new Float32Array(count * 4);
@@ -39,8 +40,11 @@ export function createGrass({ count = 200000, radius = 34, seed = 99, treeFoot =
     const a = rng.next() * Math.PI * 2;
     const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
     const dTree = Math.hypot(cx - treeFoot[0], cz - treeFoot[1]);
-    if (dTree < 0.85) continue;
-    if (dTree < 2.2 && rng.next() > (dTree - 0.85) / 1.35) continue;
+    // The garden floor is moss; grass grows beyond the fence and in sparse
+    // tufts where moss gives way at the garden's edge.
+    if (dTree < GARDEN_R - 3 && rng.next() > 0.03) continue;
+    if (dTree < GARDEN_R && rng.next() > (dTree - (GARDEN_R - 3)) / 3) continue;
+    if (pondSDF(cx, cz) < 0.4 || gravelSDF(cx, cz) < 0.2) continue;
     const tuft = 8 + Math.floor(rng.next() * 14);
     const tuftR = rng.range(0.06, 0.2);
     const lush = rng.next();
