@@ -2,14 +2,15 @@
 
 *Cherry blossoms at dusk.* An ancient weeping cherry (shidare-zakura) in full bloom,
 standing in a Japanese garden at golden hour, grown and rendered in real time in the
-browser. Curtains of blossom sway over a koi pond, petals drift down and float on the
-water, lanterns glow, and the camera wanders slowly through the garden.
+browser. Curtains of blossom sway over a koi pond fed by a mountain stream that falls
+from a rock waterfall; petals drift down and ride the current in rafts, lanterns glow,
+and the camera wanders slowly through the garden.
 
 ![Across the koi pond, backlit by the low sun](docs/pond-backlit.jpg)
 
-**Film:** [`docs/yuzakura-film.mp4`](docs/yuzakura-film.mp4), a 25-second 2.39:1 short rendered from the scene,
-with a soundtrack synthesised in code. To render it in 4K on your own graphics card, see
-[Rendering the film in 4K](#rendering-the-film-in-4k).
+**Film:** [`docs/yuzakura-film.mp4`](docs/yuzakura-film.mp4) is an early 25-second cut, rendered in
+software before the stream and waterfall were added. To render the current film in 4K on
+your own graphics card, see [Rendering the film in 4K](#rendering-the-film-in-4k).
 
 | | |
 |---|---|
@@ -56,8 +57,8 @@ frame rate.
 
 ## Rendering the film in 4K
 
-The film in `docs/` was rendered without a GPU, in software, so it was made at 1440×603
-and 12 fps, then upscaled and frame-interpolated. `tools/film/make-film.mjs` renders the
+The early cut in `docs/` was rendered without a GPU, in software, so it was made at
+1440×603 and 12 fps, then upscaled and frame-interpolated. `tools/film/make-film.mjs` renders the
 same film on your own graphics card at full quality: every frame at native 24 fps,
 supersampled 1.5× and downscaled with a Lanczos filter, so there is no upscaling or
 interpolation anywhere. It needs Node 18+, ffmpeg and Python 3 with NumPy.
@@ -90,6 +91,13 @@ The design follows real places and traditions:
   (*sori-bashi*), Kasuga and Yukimi stone lanterns, clipped azalea mounds (*karikomi*), a
   raked-gravel court, a stone wash-basin (*tsukubai*) with a *shishi-odoshi*, and the
   *bonbori* paper lamps of night cherry viewing.
+- **The stream and waterfall** follow the garden-making manual *Sakuteiki* and gardens
+  such as Tenryū-ji: a *yarimizu* stream that winds in pools and riffles, a waterfall
+  framed by two guardian stones over a lip stone, and the carp stone (*koi-ishi*) at its
+  foot, after the legend of the carp that climbs the falls to become a dragon. Petals
+  floating down a stream in drifts are called *hanaikada*, "flower rafts".
+- **The backdrop** borrows a stand of Japanese cedar (*sugi*) and a grove of moso bamboo
+  beyond the fence.
 
 ## How it is made
 
@@ -126,10 +134,21 @@ parts (base, shaft, platform, firebox, upturned roof, jewel), the bridge with it
 deck and bronze *giboshi* finials, the limb props, the twisted two-ply rope with its knot
 and *shide*, the fence, the wash-basin with its ladle and spout, the rocking bamboo tube,
 the lamps, and fractured rocks and stepping stones. `vegetation.js` clothes azalea mounds
-with leaf whorls and magenta flowers, the maple with palmate red leaves, the pines with
-needle pads, and closes the back of the garden with evergreen woodland. The ground shader
+with leaf whorls and magenta flowers, the maples with palmate red leaves, the pines with
+needle pads and the stream banks with dwarf bamboo, and closes the garden with groves of
+cedar and swaying bamboo. The ground shader
 paints velvet moss, rake patterns that ripple around the stones, pebble beaches and the
 pond bed.
+
+**The stream** (`stream.js`). One spline, defined in `layout.js`, carves the channel and
+its valley into the terrain and drives everything on it. The water surface is a ribbon
+whose ripples are carried downstream at the local speed by a two-phase flow map, so
+they never smear. Riffles get standing waves, and foam gathers where the water speeds
+up, around the stones and under the falls. The waterfall is a ballistic sheet of
+streaks that break from glassy to white as they fall, with mist drifting off the
+pool. Petals that land on the stream are handed to a raft simulation that carries them
+into the pond. Bank stones, boulders, a ford of stepping stones and a granite slab
+bridge are placed along the course.
 
 **The pond** (`water.js`, `koi.js`). The scene is re-rendered from a mirrored camera with
 an oblique near plane for the reflection. The surface adds wind ripples, rings where
@@ -144,7 +163,7 @@ and layered misty ridges. Post-processing is written from scratch: 4× MSAA HDR,
 depth of field, light shafts, mip-chain bloom, AgX tone mapping and a gentle grade.
 
 **Sound** (`src/audio/ambience.js`). Optional and generated in code: wind that swells
-with the gusts, a rustle of blossoms, plucked strings in a Japanese *in* scale, and the
+with the gusts, a rustle of blossoms, the babble of the stream over the waterfall's rush, plucked strings in a Japanese *in* scale, and the
 hollow knock of the shishi-odoshi each time it tips.
 
 ## Project layout

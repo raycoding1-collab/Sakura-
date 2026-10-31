@@ -501,18 +501,54 @@ export function buildShishiFrame(mb, pos, yaw) {
 }
 
 // ---------------------------------------------------------------------------
-// Bonbori: hexagonal paper lamps on lacquered posts. Returns the light point.
+// Bonbori: the paper lamps of night cherry viewing. A stepped black plinth, a
+// square vermilion post with brass fittings, a lacquered tray, a hexagonal
+// shade of washi stretched over a black frame (each panel printed with a
+// cherry-blossom crest and dyed pink toward the bottom), and a flared hipped
+// roof with brass ridges and a jewel finial. Returns the light point.
 export function buildBonbori(mb, pos, yaw) {
   const start = mb.count;
-  mb.sweep([[0, -0.15, 0], [0, 1.32, 0]], 0.035, 10, { mat: MAT.LACQUER, capEnd: true });
-  mb.lathe([[0.0, 1.3], [0.17, 1.3], [0.17, 1.3], [0.17, 1.33], [0.17, 1.33], [0.14, 1.34]], 6, { facets: true, mat: MAT.BLACK });
-  // Paper shade, glowing from within.
-  mb.lathe([[0.15, 1.33], [0.17, 1.42], [0.17, 1.62], [0.15, 1.71]], 6, { facets: true, mat: MAT.GLOW });
-  for (let k = 0; k < 6; k++) {
-    const a = (k / 6) * Math.PI * 2;
-    mb.box([0, 0, 0], [0.012, 0.19, 0.012], MAT.BLACK, mat4Compose([Math.cos(a) * 0.168, 1.52, Math.sin(a) * 0.168], -a));
+  const sq = (profile, mat) => mb.lathe(profile, 4, { facets: true, angle0: Math.PI / 4, mat });
+  // Plinth and post.
+  sq([[0.0, -0.06], [0.2, -0.06], [0.2, -0.06], [0.2, 0.04], [0.2, 0.04], [0.17, 0.06], [0.17, 0.06], [0.0, 0.06]], MAT.BLACK);
+  sq([[0.12, 0.06], [0.12, 0.13], [0.12, 0.13], [0.1, 0.15], [0.0, 0.15]], MAT.BLACK);
+  sq([[0.05, 0.15], [0.042, 1.25], [0.0, 1.25]], MAT.LACQUER);
+  for (const [y0, y1] of [[0.15, 0.22], [0.62, 0.65], [1.18, 1.25]]) {
+    sq([[0.0, y0], [0.054, y0], [0.054, y0], [0.054, y1], [0.054, y1], [0.0, y1]], MAT.BRONZE);
   }
-  mb.lathe([[0.14, 1.7], [0.2, 1.72], [0.2, 1.72], [0.19, 1.75], [0.08, 1.8], [0.03, 1.84], [0.0, 1.85]], 6, { facets: true, mat: MAT.BLACK });
+  // Tray with a moulded edge, on a small block.
+  mb.lathe([[0.0, 1.25], [0.07, 1.25], [0.07, 1.25], [0.07, 1.28], [0.07, 1.28], [0.2, 1.285], [0.2, 1.285],
+    [0.205, 1.3], [0.2, 1.315], [0.2, 1.315], [0.0, 1.315]], 6, { facets: true, mat: MAT.BLACK });
+
+  // Paper panels; uv.x carries the panel index, uv.y runs up the panel.
+  const R = 0.165, y0 = 1.315, y1 = 1.665;
+  const corner = (k, y, r = R) => [Math.cos((k * Math.PI) / 3) * r, y, Math.sin((k * Math.PI) / 3) * r];
+  for (let k = 0; k < 6; k++) {
+    const a = ((k + 0.5) * Math.PI) / 3;
+    const n = [Math.cos(a), 0, Math.sin(a)];
+    const v0 = mb.vertex(corner(k, y0), n, [k, 0], MAT.GLOW);
+    const v1 = mb.vertex(corner(k + 1, y0), n, [k + 1, 0], MAT.GLOW);
+    const v2 = mb.vertex(corner(k + 1, y1), n, [k + 1, 1], MAT.GLOW);
+    const v3 = mb.vertex(corner(k, y1), n, [k, 1], MAT.GLOW);
+    mb.quad(v0, v1, v2, v3);
+    // Frame: corner posts, and rails along the top and bottom edges.
+    const c = corner(k, 0, R + 0.002);
+    mb.box([0, 0, 0], [0.008, (y1 - y0) / 2 + 0.012, 0.008], MAT.BLACK, mat4Compose([c[0], (y0 + y1) / 2, c[2]], -(k * Math.PI) / 3));
+    const m = R * Math.cos(Math.PI / 6) + 0.004;
+    for (const [y, hh] of [[y0 + 0.012, 0.012], [y1 - 0.01, 0.01], [(y0 + y1) / 2 + 0.07, 0.0035]]) {
+      mb.box([0, 0, 0], [R / 2 + 0.006, hh, 0.006], MAT.BLACK, mat4Compose([Math.cos(a) * m, y, Math.sin(a) * m], -a - Math.PI / 2));
+    }
+  }
+  // Collar, then the roof: concave hip faces flaring out to upturned eaves.
+  mb.lathe([[0.0, y1], [0.17, y1], [0.17, y1], [0.17, 1.685], [0.17, 1.685], [0.0, 1.685]], 6, { facets: true, mat: MAT.BLACK });
+  const roof = [[0.0, 1.9], [0.03, 1.885], [0.07, 1.84], [0.12, 1.78], [0.18, 1.73], [0.235, 1.705], [0.262, 1.708], [0.27, 1.722]];
+  mb.lathe([...roof, [0.27, 1.722], [0.262, 1.69], [0.262, 1.69], [0.15, 1.685], [0.0, 1.685]], 6, { facets: true, mat: MAT.BLACK });
+  for (let k = 0; k < 6; k++) {
+    const path = roof.slice(1).map(([r, y]) => corner(k, y + 0.008, r));
+    mb.sweep(path, 0.006, 5, { mat: MAT.BRONZE, capEnd: true });
+  }
+  // Jewel finial.
+  mb.lathe([[0.0, 1.89], [0.022, 1.895], [0.022, 1.905], [0.012, 1.91], [0.026, 1.93], [0.024, 1.95], [0.012, 1.972], [0.0, 1.985]], 10, { mat: MAT.BRONZE });
   mb.transform(start, mat4Compose(pos, yaw));
-  return [pos[0], pos[1] + 1.52, pos[2]];
+  return [pos[0], pos[1] + 1.48, pos[2]];
 }

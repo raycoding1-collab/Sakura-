@@ -4,7 +4,7 @@ import { smoothstep } from '../core/vec.js';
 import { COMMON, WIND, ATMOS, SHADOW, CANOPY } from '../render/glsl.js';
 import { lightingUniforms } from '../render/uniforms.js';
 import { SUN } from './atmosphere.js';
-import { gardenHeight, LAYOUT_GLSL, GRAVEL, WATER_Y } from '../garden/layout.js';
+import { streamInfo, gardenHeight, LAYOUT_GLSL, GRAVEL, WATER_Y } from '../garden/layout.js';
 
 // The land: a garden on a broad knoll — moss, raked gravel, a pebble beach
 // around the koi pond — falling away beyond the fence into a hazy valley.
@@ -79,9 +79,9 @@ float rakeCoord(vec2 p, out float ringZone) {
 
 export function createTerrain() {
   // Polar mesh: fine rings through the garden, then growing toward the horizon.
-  const seg = 760;
+  const seg = 1200;
   const radii = [];
-  for (let r = 0.25; r < 34; r += r < 20 ? 0.16 : 0.22) radii.push(r);
+  for (let r = 0.2; r < 34; r += r < 23 ? 0.1 : 0.2) radii.push(r);
   let r = radii[radii.length - 1];
   while (r < 1400) {
     r *= 1.045;
@@ -112,24 +112,29 @@ export function createTerrain() {
       idx[k++] = a + j1; idx[k++] = b + j1; idx[k++] = b + j;
     }
   }
-  const nrm = new Float32Array(verts * 3);
-  const tmp = [0, 0, 0];
+  // Signed distance to the stream's banks (negative in the water), for the
+  // ground shader's wet pebble bed and banks.
+  const bankD = new Float32Array(verts).fill(99);
   for (let q = 0; q < verts; q++) {
-    groundNormal(pos[q * 3], pos[q * 3 + 2], tmp);
-    nrm[q * 3] = tmp[0]; nrm[q * 3 + 1] = tmp[1]; nrm[q * 3 + 2] = tmp[2];
+    const st = streamInfo(pos[q * 3], pos[q * 3 + 2], 1.5);
+    if (st) bankD[q] = st.d - st.hw;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  geo.setAttribute('aBank', new THREE.BufferAttribute(bankD, 1));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  geo.computeVertexNormals();
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1400);
 
   const vertexShader = /* glsl */ `
+    attribute float aBank;
     varying vec3 vWorld;
     varying vec3 vNormal;
+    varying float vBank;
     void main() {
       vWorld = position;
       vNormal = normal;
+      vBank = aBank;
       gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
     }`;
 
@@ -139,6 +144,7 @@ export function createTerrain() {
     fragmentShader: COMMON + WIND + ATMOS + SHADOW + CANOPY + TERRAIN_GLSL + /* glsl */ `
       varying vec3 vWorld;
       varying vec3 vNormal;
+      varying float vBank;
 
       vec3 meadow(vec2 p, float fine) {
         float patch1 = fbm2(p * 0.07 + 4.0);
@@ -163,7 +169,8 @@ export function createTerrain() {
 
         // ---- Material masks ---------------------------------------------------
         float bed = 1.0 - smoothstep(-0.05, 0.05, pond);
-        float beach = (1.0 - smoothstep(0.25, 0.75, pond + (vnoise2(p * 2.0) - 0.5) * 0.3)) * (1.0 - bed);
+        float streamBed = 1.0 - smoothstep(-0.06, 0.04, vBank);
+        float beach = (1.0 - smoothstep(0.25, 0.75, min(pond, vBank + 0.12) + (vnoise2(p * 2.0) - 0.5) * 0.3)) * (1.0 - bed);
         float gravel = (1.0 - smoothstep(-0.015, 0.015, gravelD)) * (1.0 - bed);
         float soil = (1.0 - smoothstep(0.9, 2.6 + vnoise2(p * 1.3) * 1.2, r)) * (1.0 - bed);
 
@@ -177,13 +184,19 @@ export function createTerrain() {
         float cushion = fbm2(p * 2.6);
         float fuzz = vnoise2(p * 38.0);
         float patchM = fbm2(p * 0.45 + 7.0);
-        vec3 moss = mix(vec3(0.014, 0.034, 0.01), vec3(0.042, 0.095, 0.018), smoothstep(0.3, 0.75, cushion));
-        moss = mix(moss, vec3(0.09, 0.13, 0.03), smoothstep(0.6, 0.95, cushion + fuzz * 0.25) * 0.5);
+        // Cushions with dark hollows between them; brighter tips where the
+        // cushions catch the light.
+        float hollow = smoothstep(0.42, 0.18, cushion + (fuzz - 0.5) * 0.2);
+        vec3 moss = mix(vec3(0.012, 0.03, 0.009), vec3(0.036, 0.08, 0.016), smoothstep(0.3, 0.75, cushion));
+        moss = mix(moss, vec3(0.075, 0.11, 0.028), smoothstep(0.62, 0.95, cushion + fuzz * 0.25) * 0.45);
+        moss *= 1.0 - hollow * 0.45;
         // Patches of different mosses and bare, needle-strewn earth.
         moss = mix(moss, vec3(0.06, 0.08, 0.03), smoothstep(0.55, 0.75, patchM) * 0.6);
-        moss = mix(moss, vec3(0.045, 0.035, 0.022), smoothstep(0.68, 0.82, fbm2(p * 0.9 - 3.0)) * 0.7);
+        moss = mix(moss, vec3(0.045, 0.035, 0.022), smoothstep(0.62, 0.8, fbm2(p * 0.9 - 3.0)) * 0.75);
+        // Fallen needles and leaf litter in drifts.
+        moss = mix(moss, vec3(0.07, 0.05, 0.03), smoothstep(0.7, 0.85, fbm2(p * 3.1 + 11.0)) * 0.55);
         moss *= 0.8 + 0.35 * fuzz;
-        float hMoss = cushion * 0.025 + fuzz * 0.004;
+        float hMoss = cushion * 0.03 + fuzz * 0.005 - hollow * 0.01;
         vec3 ground = mix(meadow(p, fine), moss, garden);
         albedo = ground;
         hgt = mix(vnoise2(p * 9.0) * 0.012, hMoss, garden);
@@ -229,8 +242,10 @@ export function createTerrain() {
           pc = mix(pc, vec3(0.3, 0.22, 0.16), step(0.93, hash11(use.z * 5.0)));
           pc *= 0.75 + 0.35 * dome;
           pc = mix(vec3(0.045, 0.04, 0.032), pc, pebble);
-          float wet = 1.0 - smoothstep(0.0, 0.3, pond);
+          float wet = 1.0 - smoothstep(0.0, 0.3, min(pond, vBank + 0.06));
           pc *= mix(1.0, 0.55, wet);
+          // Under running water: darker, with a film of green algae.
+          pc = mix(pc, pc * vec3(0.5, 0.62, 0.42), streamBed);
           albedo = mix(albedo, pc, beach);
           hgt = mix(hgt, dome * 0.02, beach);
           rough = mix(rough, mix(0.7, 0.25, wet), beach);

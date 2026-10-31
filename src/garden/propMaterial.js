@@ -10,7 +10,7 @@ import { lightingUniforms } from '../render/uniforms.js';
 
 export const MAT = {
   GRANITE: 0, LACQUER: 1, WOOD: 2, BAMBOO: 3, STRAW: 4, PAPER: 5, GLOW: 6,
-  BLACK: 7, BRONZE: 8, ROCK: 9, FIRE: 10, WATER: 11, FOLIAGE: 12,
+  BLACK: 7, BRONZE: 8, ROCK: 9, FIRE: 10, WATER: 11, FOLIAGE: 12, SUGI: 13, CULM: 14,
 };
 
 const vertexShader = COMMON + WIND + /* glsl */ `
@@ -150,13 +150,43 @@ void main() {
     translucency = 0.7;
     rough = 0.9;
   } else if (m == 6) {
-    // Lantern paper, lit from within: warm glow crossed by the bamboo ribs.
-    float ribs = 1.0 - smoothstep(0.0, 0.08, abs(fract(vUv.y * 9.0) - 0.5) * 2.0 - 0.9);
-    float fib = vnoise3(vec3(wp * 150.0));
-    albedo = vec3(0.45, 0.36, 0.26);
-    float flick = 0.92 + 0.08 * sin(uTime * 13.0 + hash12(floor(wp.xz * 2.0)) * 40.0) * sin(uTime * 7.3);
-    emit = vec3(1.0, 0.42, 0.13) * uGlow * 1.15 * flick * (0.85 + 0.15 * fib) * (1.0 - ribs * 0.6);
+    // Bonbori washi, lit from within. uv.x = panel index + across, uv.y = up.
+    float k = floor(vUv.x + 1e-4);
+    vec2 q = vec2(fract(vUv.x + 1e-4), vUv.y);
+    vec2 mq = (q - 0.5) * vec2(0.165, 0.35);           // metres from the panel centre
+    // The flame sits low in the shade: brightest there, falling off to the frame.
+    float core = exp(-dot(mq - vec2(0.0, -0.03), mq - vec2(0.0, -0.03)) * 55.0);
+    float edge = smoothstep(0.0, 0.08, q.x) * smoothstep(1.0, 0.92, q.x) * smoothstep(0.0, 0.06, q.y) * smoothstep(1.0, 0.94, q.y);
+    float fib = fbm3(vec3(q * vec2(28.0, 60.0), k * 7.0)) * band(0.002, foot);
+    float glow = (0.45 + 0.75 * core) * mix(0.55, 1.0, edge) * (0.88 + 0.24 * fib);
+    // Cherry-blossom crest: five notched petals around a ring of stamens.
+    vec2 c = mq - vec2(0.0, 0.035);
+    float r = length(c);
+    float an = atan(c.x, c.y);
+    float sec = mod(an + PI / 5.0, TAU / 5.0) - PI / 5.0;
+    float petalR = 0.052 * (0.45 + 0.55 * pow(max(cos(sec * 2.5), 0.0), 0.6)) - 0.009 * max(0.0, 1.0 - abs(sec) / 0.13);
+    float aa = max(fwidth(r), 1e-4);
+    float crest = 1.0 - smoothstep(-aa, aa, r - petalR);
+    float heart = 1.0 - smoothstep(-aa, aa, r - 0.015);
+    float stamen = 0.0;
+    for (int i = 0; i < 5; i++) {
+      float th = float(i) * TAU / 5.0;
+      stamen = max(stamen, 1.0 - smoothstep(-aa, aa, length(c - 0.024 * vec2(sin(th), cos(th))) - 0.0045));
+    }
+    // Pink dye bleeding up from the bottom rail (beni-bokashi).
+    float dye = (1.0 - smoothstep(0.0, 0.3, q.y)) * (0.75 + 0.25 * fbm3(vec3(q * 9.0, k)));
+    vec3 tint = vec3(1.0);
+    tint = mix(tint, vec3(1.0, 0.42, 0.55), dye * 0.8);
+    tint = mix(tint, vec3(0.95, 0.2, 0.36), crest * (1.0 - heart));
+    tint = mix(tint, vec3(1.0, 0.85, 0.55), heart);
+    tint = mix(tint, vec3(0.55, 0.12, 0.08), stamen * (1.0 - heart) * 0.8);
+    vec3 flame = mix(vec3(1.0, 0.48, 0.16), vec3(1.0, 0.74, 0.42), core);
+    float flick = 0.94 + 0.06 * sin(uTime * 13.0 + hash12(floor(wp.xz * 2.0)) * 40.0) * sin(uTime * 7.3);
+    albedo = vec3(0.8, 0.77, 0.7) * tint;
+    translucency = 0.5;
+    emit = flame * tint * glow * uGlow * 1.25 * flick;
     rough = 0.9;
+    spec = 0.15;
   } else if (m == 7) {
     albedo = vec3(0.02, 0.018, 0.016);
     rough = 0.6;
@@ -166,6 +196,28 @@ void main() {
     albedo = mix(vec3(0.3, 0.2, 0.08), vec3(0.08, 0.16, 0.12), pat);
     rough = mix(0.35, 0.8, pat);
     spec = 1.2;
+  } else if (m == 13) {
+    // Cedar bark: long fibrous strips, red-brown, greyer where weathered.
+    float strip = vnoise3(vec3(vUv.x * 26.0, vUv.y * 0.9, 3.0));
+    float fibre = vnoise3(vec3(vUv.x * 90.0, vUv.y * 4.0, 5.0)) * band(0.003, foot);
+    albedo = mix(vec3(0.1, 0.045, 0.028), vec3(0.19, 0.1, 0.06), strip) * (0.8 + 0.3 * fibre);
+    albedo = mix(albedo, vec3(0.2, 0.18, 0.16), smoothstep(0.6, 0.85, vnoise3(wp * 0.7)) * 0.5);
+    h = strip * 0.004 + fibre * 0.001;
+    rough = 0.85;
+  } else if (m == 14) {
+    // Living moso culm: jade green dusted white below each node, a dark ring
+    // at the node itself; older culms yellowed and lichen-spotted.
+    float id = hash12(floor(vec2(wp.x * 4.0, wp.z * 4.0)));
+    float node = fract(vUv.y / 0.38 + id * 7.0);
+    float ring = 1.0 - smoothstep(0.0, 0.025, min(node, 1.0 - node));
+    float bloom = smoothstep(0.75, 0.98, node) * 0.6;
+    vec3 green = mix(vec3(0.07, 0.13, 0.035), vec3(0.16, 0.18, 0.06), smoothstep(0.55, 0.9, id));
+    albedo = mix(green, vec3(0.3, 0.32, 0.26), bloom);
+    albedo = mix(albedo, vec3(0.05, 0.06, 0.02), ring * 0.7);
+    albedo *= 0.9 + 0.2 * vnoise3(vec3(vUv.x * 30.0, vUv.y * 2.0, id * 9.0)) * band(0.003, foot);
+    h = ring * 0.0015;
+    rough = 0.35;
+    spec = 0.9;
   } else if (m == 12) {
     // Dense inner foliage of a clipped shrub: dark, leafy, barely lit.
     float lv = vnoise3(wp * 45.0);

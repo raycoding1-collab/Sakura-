@@ -58,8 +58,9 @@ const OUT = path.resolve(HERE, opt('out', `out/yuzakura-${W >= 3840 ? '4k' : W +
 const WORK = path.join(HERE, 'out', `${W}x${H}@${SS}x-${FPS * BLUR}fps-${QUALITY}`);
 
 // ---- The edit ----------------------------------------------------------------------
-// Each shot starts the scene at a point on its cinematic path (t, seconds) or at a
-// fixed camera (cam=radius,height,azimuth,look). Shots are joined with 0.5 s dissolves;
+// Each shot starts the scene at a point on its cinematic path (t, seconds), at a
+// fixed camera (cam=radius,height,azimuth,look), or on a free camera gliding from
+// eye/at to eye2/at2 over dur seconds. Shots are joined with 0.5 s dissolves;
 // the score is timed to these cuts.
 const XFADE = 0.5;
 const SHOTS = [
@@ -67,7 +68,8 @@ const SHOTS = [
   { name: 'giant', query: 't=66&fov=34', seconds: 4.0 },
   { name: 'curtain', query: 't=96&fov=32', seconds: 4.5 },
   { name: 'koi', query: 'cam=10.2,2.6,2.65,-1.6&fov=34', seconds: 4.0 },
-  { name: 'frontlit', query: 't=148&fov=30', seconds: 4.0 },
+  // Low over the stream, drifting upstream with the petal rafts toward the falls.
+  { name: 'stream', query: 'eye=-7.45,0.3,-3.0&eye2=-7.15,0.4,-4.4&at=-4.6,-0.15,-11.5&at2=-3.9,0.2,-13.2&dur=4&focus=4.6&fov=38', seconds: 4.0 },
   { name: 'bridge', query: 't=220&fov=30', seconds: 2.5 },
   { name: 'closing', query: 't=44&fov=37', seconds: 3.6 },
 ];

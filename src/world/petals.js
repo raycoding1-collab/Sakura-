@@ -4,13 +4,13 @@ import { COMMON, WIND, ATMOS, SHADOW, CANOPY } from '../render/glsl.js';
 import { lightingUniforms } from '../render/uniforms.js';
 import { PETAL_SHAPE } from '../tree/blossomMaterial.js';
 import { groundHeight, WATER_LEVEL } from './terrain.js';
-import { pondSDF } from '../garden/layout.js';
+import { pondSDF, streamLookup, WATER_Y } from '../garden/layout.js';
 
 // Loose petals: the carpet beneath the tree and the ones drifting down.
 // Both share one material — a single curled petal cut from the same signed
 // distance field as the blossoms, lit as a translucent sheet.
 
-function petalGrid(across, along) {
+export function petalGrid(across, along) {
   const pos = [], index = [];
   for (let j = 0; j < along; j++)
     for (let i = 0; i < across; i++) pos.push((i / (across - 1)) * 2 - 1, j / (along - 1), 0);
@@ -93,7 +93,7 @@ void main() {
 }
 `;
 
-function makeMaterials(groundLift) {
+export function makeMaterials(groundLift) {
   const uniforms = lightingUniforms({ uGroundLift: { value: groundLift } });
   return {
     color: new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, side: THREE.DoubleSide, alphaToCoverage: true }),
@@ -101,7 +101,7 @@ function makeMaterials(groundLift) {
   };
 }
 
-function quatFromYawTilt(out, i, yaw, tiltX, tiltZ, flip) {
+export function quatFromYawTilt(out, i, yaw, tiltX, tiltZ, flip) {
   // q = yaw(Y) * tilt(X) * tilt(Z) * flip(X by π)
   const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2);
   const cx = Math.cos(tiltX / 2), sx = Math.sin(tiltX / 2);
@@ -118,7 +118,7 @@ function quatFromYawTilt(out, i, yaw, tiltX, tiltZ, flip) {
   out[i] = x2; out[i + 1] = y2; out[i + 2] = z2; out[i + 3] = w2;
 }
 
-function buildGeometry(base, count, dynamic) {
+export function buildGeometry(base, count, dynamic) {
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(base.position, 3));
   geo.setIndex(new THREE.BufferAttribute(base.index, 1));
@@ -143,8 +143,11 @@ export function createGroundPetals({ flowers, count = 40000, seed = 5, windDir =
   const P = geo.getAttribute('iPos').array;
   const Q = geo.getAttribute('iQuat').array;
   const S = geo.getAttribute('iParams').array;
+  const look = {};
   for (let i = 0; i < count; i++) {
     let x, z;
+    // Not on the running stream: those petals are carried away.
+    do {
     if (rng.next() < 0.82) {
       const f = flowers[Math.floor(rng.next() * flowers.length)];
       const drift = Math.abs(rng.gauss()) * 2.6;
@@ -157,6 +160,7 @@ export function createGroundPetals({ flowers, count = 40000, seed = 5, windDir =
       x = Math.cos(a) * d + rng.gauss() * 2;
       z = Math.sin(a) * d + rng.gauss() * 2;
     }
+    } while (streamLookup(x, z, look).bank < 0.03);
     const floating = pondSDF(x, z) < -0.15;
     const lift = floating ? 0 : Math.pow(rng.next(), 2.2) * 0.09;
     P[i * 3] = x;
@@ -182,8 +186,10 @@ export function createGroundPetals({ flowers, count = 40000, seed = 5, windDir =
 const AIR = 0, LANDED = 1, FADING = 2;
 
 export class FallingPetals {
-  constructor({ flowers, capacity = 5000, seed = 77, windDir, gustField, onSplash = null }) {
+  constructor({ flowers, capacity = 5000, seed = 77, windDir, gustField, onSplash = null, onStream = null }) {
     this.onSplash = onSplash;
+    this.onStream = onStream;
+    this.look = {};
     this.rng = new RNG(seed);
     this.capacity = capacity;
     this.windDir = windDir;
@@ -343,6 +349,16 @@ export class FallingPetals {
       P[i * 3 + 1] = y + vel[i * 3 + 1] * dt;
       P[i * 3 + 2] = z + vel[i * 3 + 2] * dt;
       const onWater = pondSDF(P[i * 3], P[i * 3 + 2]) < -0.1;
+      const L = this.onStream && !warm && P[i * 3 + 1] < 1.5 ? streamLookup(P[i * 3], P[i * 3 + 2], this.look) : null;
+      if (L && L.bank < -0.04 && P[i * 3 + 1] <= L.level - (WATER_Y - WATER_LEVEL) + 0.006) {
+        // Came down on the stream: the current takes it from here.
+        this.onStream(P[i * 3], P[i * 3 + 2], L.s);
+        this.state[i] = FADING;
+        this.timer[i] = 0.5;
+        S[i * 4] = 0;
+        this.airborne--;
+        continue;
+      }
       const gy = onWater ? WATER_LEVEL + 0.004 : groundHeight(P[i * 3], P[i * 3 + 2]) + this.restY[i];
       if (P[i * 3 + 1] <= gy) {
         P[i * 3 + 1] = gy;

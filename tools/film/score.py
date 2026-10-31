@@ -39,6 +39,15 @@ rustle = bandnoise(N, 3000, 9000) * (swell ** 3) * 0.025
 out[:, 0] += wind + rustle * 0.8
 out[:, 1] += np.roll(wind, 900) + rustle
 
+# The stream: a gurgling babble and the low rush of the waterfall, rising in
+# the shot that looks up the stream (15.5-19.5 s) and in the opening.
+gurgle = np.interp(t, np.arange(0, DUR + 0.2, 0.06), rng.random(int((DUR + 0.2) / 0.06) + 1))
+near = 0.35 + 0.65 * np.clip(np.minimum((t - 15.0) / 0.8, (20.0 - t) / 0.8), 0, 1)
+babble = bandnoise(N, 700, 2800) * (0.4 + 0.6 * gurgle ** 2) * near * 0.06
+rush = bandnoise(N, 70, 380) * near * 0.07
+out[:, 0] += babble + rush
+out[:, 1] += np.roll(babble, 1300) + np.roll(rush, 700)
+
 # Pad: soft partial stacks with slow attack, three chord sections.
 def tone(freq, dur, att=2.5, rel=3.0, bright=0.25):
     n = at(dur); tt = np.arange(n) / SR

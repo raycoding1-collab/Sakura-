@@ -16,6 +16,7 @@ import { createBlossomMaterials, createBlossomGeometry, BlossomDetail } from './
 import { buildCanopyGrid } from './tree/canopyGrid.js';
 import { createGarden } from './garden/garden.js';
 import { createWater, PlanarReflection } from './garden/water.js';
+import { createStream } from './garden/stream.js';
 import { createVegetation } from './garden/vegetation.js';
 import { createKoi } from './garden/koi.js';
 import { propGeometry } from './garden/propMaterial.js';
@@ -31,10 +32,10 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 const PRESETS = {
   // For offline film rendering on a strong GPU.
-  ultra: { flowers: 1.0, grass: 220000, carpet: 52000, falling: 6000, motes: 1400, shadow: 4096, samples: 4, dof: true, pixels: 40e6, reflect: 0.75, reflectFlowers: 0.8 },
-  high: { flowers: 0.75, grass: 160000, carpet: 42000, falling: 5000, motes: 1100, shadow: 4096, samples: 4, dof: true, pixels: 2.6e6, reflect: 0.5, reflectFlowers: 0.45 },
-  medium: { flowers: 0.5, grass: 90000, carpet: 30000, falling: 3600, motes: 900, shadow: 2048, samples: 4, dof: true, pixels: 1.5e6, reflect: 0.35, reflectFlowers: 0.3 },
-  low: { flowers: 0.32, grass: 40000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6, reflect: 0.25, reflectFlowers: 0.15 },
+  ultra: { streamPetals: 2800, flowers: 1.0, grass: 220000, carpet: 52000, falling: 6000, motes: 1400, shadow: 4096, samples: 4, dof: true, pixels: 40e6, reflect: 0.75, reflectFlowers: 0.8 },
+  high: { streamPetals: 2000, flowers: 0.75, grass: 160000, carpet: 42000, falling: 5000, motes: 1100, shadow: 4096, samples: 4, dof: true, pixels: 2.6e6, reflect: 0.5, reflectFlowers: 0.45 },
+  medium: { streamPetals: 1300, flowers: 0.5, grass: 90000, carpet: 30000, falling: 3600, motes: 900, shadow: 2048, samples: 4, dof: true, pixels: 1.5e6, reflect: 0.35, reflectFlowers: 0.3 },
+  low: { streamPetals: 700, flowers: 0.32, grass: 40000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6, reflect: 0.25, reflectFlowers: 0.15 },
 };
 
 function detectQuality(gl) {
@@ -169,18 +170,24 @@ async function boot() {
 
   const water = createWater(WATER_LEVEL);
   scene.add(water.mesh);
+  const stream = createStream({ waterLevel: WATER_LEVEL, wet: garden.stream.wet, petals: Q.streamPetals });
+  scene.add(stream.group);
   const koi = createKoi({ waterLevel: WATER_LEVEL });
   scene.add(koi.mesh);
   const reflection = Q.reflect > 0 ? new PlanarReflection(renderer) : null;
   if (reflection) reflection.scale = Q.reflect;
-  const falling = new FallingPetals({ flowers, capacity: Q.falling, windDir, gustField, onSplash: (x, z, t) => water.addImpact(x, z, t, 1) });
+  const falling = new FallingPetals({
+    flowers, capacity: Q.falling, windDir, gustField,
+    onSplash: (x, z, t) => water.addImpact(x, z, t, 1),
+    onStream: (x, z, s) => stream.rafts.inject(x, z, s),
+  });
   scene.add(falling.mesh);
   const motes = createMotes({ count: Q.motes });
   scene.add(motes.points);
 
   {
     const hide = (params.get('hide') || '').split(',');
-    const named = { sky, terrain, bark, blossoms, grass: grass.mesh, carpet: carpet.mesh, falling: falling.mesh, motes: motes.points, garden: garden.mesh, water: water.mesh, veg: veg.mesh };
+    const named = { sky, terrain, bark, blossoms, grass: grass.mesh, carpet: carpet.mesh, falling: falling.mesh, motes: motes.points, garden: garden.mesh, water: water.mesh, veg: veg.mesh, stream: stream.group };
     for (const k of hide) if (named[k]) named[k].visible = false;
   }
 
@@ -220,9 +227,38 @@ async function boot() {
   }
   const t0 = parseFloat(params.get('t') || '0');
   cine.time = t0;
+  // Film capture (frame-stepped): the camera follows its path only, whatever
+  // happens to the mouse or keyboard in the capture window.
+  const capture = params.has('frames');
+  if (capture) {
+    canvas.style.pointerEvents = 'none';
+    cine.resumeAfter = 0;
+  }
+  // A free camera for film shots: eye=x,y,z&at=x,y,z (world), optionally
+  // gliding to eye2 / at2 over dur seconds.
+  if (params.get('eye')) {
+    const v3 = (str) => new THREE.Vector3(...str.split(',').map(Number));
+    const e0 = v3(params.get('eye')), a0 = v3(params.get('at') || '0,2,0');
+    const e1 = params.get('eye2') ? v3(params.get('eye2')) : e0;
+    const a1 = params.get('at2') ? v3(params.get('at2')) : a0;
+    const dur = parseFloat(params.get('dur') || '5');
+    const look = new THREE.Vector3();
+    let tt = 0;
+    cine.update = (dt) => {
+      tt += dt;
+      const k = Math.min(1, tt / dur);
+      const e = k * k * (3 - 2 * k);
+      camera.position.lerpVectors(e0, e1, e);
+      look.lerpVectors(a0, a1, e);
+      camera.lookAt(look);
+      camera.updateMatrixWorld();
+      cine.focus = parseFloat(params.get('focus')) || Math.max(2, camera.position.distanceTo(look) * 0.8);
+    };
+  }
 
   const audio = new Ambience();
   ui.on('camera', () => {
+    if (capture) return;
     cine.setAuto(!cine.auto);
     ui.setCamera(cine.auto);
   });
@@ -300,6 +336,7 @@ async function boot() {
     audio.update(shared.uGust.value);
     garden.update(time, () => audio.knock && audio.knock());
     koi.update(dt, time);
+    stream.update(dt, time);
     garden.lights.forEach((L, i) => {
       if (i >= shared.uLightColor.value.length) return;
       const fl = 0.86 + 0.08 * Math.sin(time * 9.1 + i * 2.3) + 0.06 * Math.sin(time * 23.7 + i * 5.1);
@@ -309,7 +346,7 @@ async function boot() {
     shadow.render();
     if (reflection) {
       // Mirror pass: lighter scene (no grass, motes or close-up flowers).
-      const hidden = [grass.mesh, motes.points, blossomsNear, water.mesh, koi.mesh];
+      const hidden = [grass.mesh, motes.points, blossomsNear, water.mesh, koi.mesh, stream.water, stream.rafts.mesh, stream.mist];
       const fullCount = blossomGeo.instanceCount;
       const ok = reflection.render(scene, camera, WATER_LEVEL, (vc) => {
         for (const o of hidden) o.visible = false;
@@ -323,9 +360,11 @@ async function boot() {
       water.material.uniforms.uHasReflection.value = ok ? 1 : 0;
       water.material.uniforms.uReflection.value = reflection.target.texture;
       water.material.uniforms.uTexMatrix.value.copy(reflection.textureMatrix);
-      koi.material.uniforms.uHasReflection.value = ok ? 1 : 0;
-      koi.material.uniforms.uReflection.value = reflection.target.texture;
-      koi.material.uniforms.uTexMatrix.value.copy(reflection.textureMatrix);
+      for (const m of [stream.material, koi.material]) {
+        m.uniforms.uHasReflection.value = ok ? 1 : 0;
+        m.uniforms.uReflection.value = reflection.target.texture;
+        m.uniforms.uTexMatrix.value.copy(reflection.textureMatrix);
+      }
     }
     fadeIn = Math.min(1, fadeIn + Math.min(raw, 0.25) / 3.5);
     post.params.fade = fadeIn * fadeIn * (3 - 2 * fadeIn);

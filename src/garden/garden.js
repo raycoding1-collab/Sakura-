@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MeshBuilder } from '../core/geom.js';
 import { createPropMaterials, propGeometry } from './propMaterial.js';
 import { POND_LOBES } from './layout.js';
+import { buildStreamStones } from './stream.js';
 import {
   shorePoint, buildTreeSupports, buildShimenawa, buildKasuga, buildYukimi, buildBridge,
   buildRocks, buildFence, buildTsukubai, buildShishiOdoshi, buildShishiFrame, buildBonbori,
@@ -12,9 +13,12 @@ export const PATHS = [
   [[0.6, 1.9], [0.3, 4.3], [-0.4, 6.6], [-1.2, 8.8], [-1.75, 10.2]],
   [[-2.4, 15.7], [-0.4, 17.4], [2.2, 17.6], [4.6, 16.4], [5.6, 15.4]],
   [[1.6, -1.5], [3.0, -3.2]],
+  // West from the tree to the ford across the stream, and on toward the pine.
+  [[-2.4, -2.0], [-4.3, -2.6], [-6.75, -2.55]],
+  [[-9.25, -2.75], [-10.9, -3.3], [-12.6, -3.0]],
 ];
 
-const BONBORI = [[1.5, 3.2], [-1.0, 5.2], [0.7, 9.3], [-0.5, 10.7], [-6.4, 0.6], [-12.2, 0.4]];
+const BONBORI = [[1.5, 3.2], [-1.0, 5.2], [0.7, 9.3], [-0.5, 10.7], [-5.35, -0.15], [-12.2, 0.4]];
 
 export function createGarden({ skel, bark, groundAt, waterLevel }) {
   const mb = new MeshBuilder();
@@ -43,6 +47,7 @@ export function createGarden({ skel, bark, groundAt, waterLevel }) {
   });
 
   buildFence(mb, groundAt, 0.75, 4.25);
+  const stream = buildStreamStones(mb, groundAt, waterLevel);
 
   // Wash-basin and the deer-scarer by the second pond.
   const D = POND_LOBES[3];
@@ -93,6 +98,6 @@ export function createGarden({ skel, bark, groundAt, waterLevel }) {
   };
   rockerShadow.matrixAutoUpdate = false;
 
-  return { mesh, geometry: geo, materials: mats, rocker, rockerShadow, lights, bridge, update, positions: { kasugaPos, yukimiPos, tsuPos, shishiPos } };
+  return { mesh, geometry: geo, materials: mats, rocker, rockerShadow, lights, bridge, update, stream, positions: { kasugaPos, yukimiPos, tsuPos, shishiPos } };
 }
 

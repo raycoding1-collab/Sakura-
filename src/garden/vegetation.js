@@ -9,7 +9,7 @@ import { generateSkeleton } from '../tree/skeleton.js';
 import { buildBarkMesh } from '../tree/barkMesh.js';
 import { createBarkGeometry } from '../tree/barkMaterial.js';
 import { MAPLE, PINE } from '../tree/species.js';
-import { pondSDF, gravelSDF, ISLAND } from './layout.js';
+import { pondSDF, gravelSDF, ISLAND, STREAM_COURSE, streamLookup } from './layout.js';
 
 // The garden's other plants, all drawn with one instanced foliage card whose
 // outline is cut per kind from a signed distance field:
@@ -17,7 +17,7 @@ import { pondSDF, gravelSDF, ISLAND } from './layout.js';
 //   4 cedar spray
 // Leaves follow the same wind as the branches they grow on.
 
-export const LEAF = { AZALEA: 0, AZALEA_FLOWER: 1, MAPLE: 2, PINE: 3, CEDAR: 4 };
+export const LEAF = { AZALEA: 0, AZALEA_FLOWER: 1, MAPLE: 2, PINE: 3, CEDAR: 4, BAMBOO: 5 };
 
 const VERT = COMMON + WIND + ATMOS + CANOPY + /* glsl */ `
 attribute vec3 iPos;
@@ -122,6 +122,27 @@ void main() {
     trans = 0.25;
     glossy = 0.5;
   }
+  if (kind == 5) {
+    // A spray of bamboo leaves: slender lances fanning down from one twig.
+    d = 1e3;
+    vec2 o = vec2(0.0, 0.82);
+    float nl = 4.0 + floor(var * 3.0);
+    for (int k = 0; k < 6; k++) {
+      if (float(k) >= nl) break;
+      float th = -1.5708 + (float(k) - (nl - 1.0) * 0.5) * 0.42 + (hash11(float(k) + var * 31.0) - 0.5) * 0.25;
+      vec2 dir = vec2(cos(th), sin(th));
+      float L = 1.55 + 0.3 * hash11(float(k) * 3.1 + var * 17.0);
+      vec2 q = p - o;
+      float t = dot(q, dir) / L;
+      float lat = abs(q.x * dir.y - q.y * dir.x);
+      float w = 0.13 * pow(max(sin(clamp(t, 0.0, 1.0) * 3.14159), 0.0), 0.65) * L;
+      d = min(d, max(lat - w, max(-t, t - 1.0) * L));
+    }
+    albedo = mix(vec3(0.025, 0.055, 0.014), vec3(0.075, 0.11, 0.025), var);
+    albedo = mix(albedo, vec3(0.17, 0.16, 0.06), step(0.9, var) * 0.5);
+    trans = 0.9;
+    glossy = 0.55;
+  }
   float alpha = aa(d);
 #ifdef DEPTH_PASS
   if (alpha < 0.5) discard;
@@ -198,11 +219,15 @@ class FoliageSet {
 // Karikomi: azaleas sheared into soft mounds. A dark inner core keeps the
 // mound solid; leaf whorls (and, on some, flowers) clothe its surface.
 const MOUNDS = [
-  [-4.6, -0.9, 1.0, 0.62, false], [-5.9, -1.9, 0.75, 0.5, true], [-13.4, 0.9, 1.15, 0.7, false],
+  [-4.6, -0.9, 1.0, 0.62, false], [-5.2, -4.4, 0.75, 0.5, true], [-13.4, 0.9, 1.15, 0.7, false],
   [-14.6, 2.3, 0.8, 0.55, true], [3.3, 10.4, 0.85, 0.55, true], [4.4, 9.5, 0.62, 0.45, false],
   [-5.8, 17.2, 0.95, 0.6, false], [6.9, 11.6, 0.7, 0.48, true], [-18.6, 9.4, 1.25, 0.8, false],
   [-17.4, 11.0, 0.8, 0.55, true], [11.6, -9.6, 1.05, 0.62, false], [4.6, -11.9, 0.9, 0.55, true],
   [13.7, 3.6, 1.0, 0.6, false], [-1.4, -6.6, 0.8, 0.52, false], [9.4, 13.8, 0.9, 0.55, false],
+  // On the waterfall hill and along the stream.
+  [-4.6, -18.3, 1.05, 0.62, true], [0.4, -18.4, 0.9, 0.55, false], [-1.2, -21.9, 1.3, 0.75, false],
+  [-5.1, -15.4, 0.75, 0.48, true], [1.9, -16.6, 0.8, 0.5, true], [-8.3, -11.4, 0.9, 0.55, false],
+  [-4.0, -8.8, 0.7, 0.45, true],
 ];
 
 function buildMounds(fs, mb, groundAt) {
@@ -281,28 +306,106 @@ function pinePads(fs, skel, rng, scale = 1) {
   }
 }
 
-// A dark band of evergreen woodland closing the back of the garden: short
-// trunks under broad, clumped crowns of dense foliage.
-function cedars(fs, mb, groundAt) {
+// The garden borrows its backdrop from two groves beyond the fence: a stand of
+// Kitayama cedar to the west and north — tall, dead-straight trunks pruned
+// clean, crowned with narrow cones of clumped foliage — and, on the pond side,
+// moso bamboo that leans in over the wall and sways with every gust.
+function sugiGrove(fs, mb, groundAt) {
   const rng = new RNG(808);
-  for (let i = 0; i < 20; i++) {
-    const a = 0.85 + (i / 19) * 3.3 + rng.sym(0.05);
-    const r = rng.range(31, 38);
+  const placed = [];
+  for (let tries = 0; placed.length < 60 && tries < 600; tries++) {
+    // West and north, and close behind the waterfall hill.
+    const behind = rng.chance(0.3);
+    const a = behind ? rng.range(4.25, 4.95) : rng.range(2.6, 4.25);
+    const r = behind ? rng.range(25, 36) : rng.range(29, 41);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (placed.some(([px, pz]) => Math.hypot(px - x, pz - z) < 1.9)) continue;
+    placed.push([x, z]);
+    const g = groundAt(x, z);
+    const H = rng.range(13, 21), r0 = rng.range(0.17, 0.27);
+    const lean = [rng.sym(0.25), rng.sym(0.25)];
+    const top = [x + lean[0], g + H, z + lean[1]];
+    mb.sweep([[x, g - 0.3, z], [x + lean[0] * 0.5, g + H * 0.5, z + lean[1] * 0.5], top], (t) => V.mix(r0, r0 * 0.3, t), 10, { mat: 13, capEnd: true });
+    // Crown: tiers of clumped sprays on a narrow cone.
+    const base = H * rng.range(0.3, 0.45), R = rng.range(1.7, 2.5);
+    const clumps = Math.round((H - base) * rng.range(16, 21));
+    for (let c = 0; c < clumps; c++) {
+      const y = base + Math.pow(rng.next(), 0.8) * (H + 0.5 - base);
+      const k = 1 - (y - base) / (H + 0.6 - base);
+      const rc = R * Math.pow(Math.max(0, k), 0.85) * rng.range(0.55, 1.05);
+      const b = rng.range(0, Math.PI * 2);
+      const fy = (y - g) / H;
+      const cx = x + lean[0] * fy + Math.cos(b) * rc, cz = z + lean[1] * fy + Math.sin(b) * rc;
+      const n = rng.int(5, 8);
+      for (let q = 0; q < n; q++) {
+        const p = [cx + rng.sym(0.35), g + y + rng.sym(0.25), cz + rng.sym(0.35)];
+        fs.add(p, [Math.cos(b) * 0.7 + rng.sym(0.3), 0.7, Math.sin(b) * 0.7 + rng.sym(0.3)], rng.range(0.5, 0.8), LEAF.CEDAR, rng.next(), 0.0, [0.25, 0.2, rng.next(), rng.next()], rng.range(0, 6.28));
+      }
+    }
+  }
+}
+
+// Kumazasa: knee-high dwarf bamboo in clumps along the stream's banks and
+// around the waterfall hill.
+function sasa(fs, groundAt) {
+  const rng = new RNG(2121);
+  const C = STREAM_COURSE;
+  const spots = [];
+  for (let i = 0; i < C.x.length; i += 5) {
+    if (!rng.chance(0.55)) continue;
+    const side = rng.chance(0.5) ? 1 : -1;
+    const j = Math.min(C.x.length - 2, i);
+    const tx = C.x[j + 1] - C.x[j], tz = C.z[j + 1] - C.z[j];
+    const l = Math.hypot(tx, tz) || 1;
+    const d = C.hw[j] + rng.range(0.35, 1.4);
+    spots.push([C.x[j] - (tz / l) * d * side, C.z[j] + (tx / l) * d * side]);
+  }
+  for (let k = 0; k < 40; k++) {
+    const a = rng.range(0, 6.28), r = rng.range(2.5, 6.5);
+    spots.push([-2.4 + Math.cos(a) * r, -20.0 + Math.sin(a) * r]);
+  }
+  for (const [cx, cz] of spots) {
+    if (pondSDF(cx, cz) < 0.3) continue;
+    const n = rng.int(8, 18), rad = rng.range(0.25, 0.55);
+    for (let q = 0; q < n; q++) {
+      const a = rng.range(0, 6.28), r = Math.sqrt(rng.next()) * rad;
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      if (streamLookup(x, z).bank < 0.12) continue;
+      const p = [x, groundAt(x, z) + rng.range(0.08, 0.3), z];
+      fs.add(p, [Math.cos(a) * 0.8 + rng.sym(0.4), rng.range(0.3, 0.8), Math.sin(a) * 0.8 + rng.sym(0.4)], rng.range(0.075, 0.105), LEAF.BAMBOO, rng.range(0.0, 0.4), 0.6, [0.05, 0.3, rng.next(), rng.next()], rng.range(0, 6.28));
+    }
+  }
+}
+
+function bambooGrove(fs, mb, groundAt) {
+  const rng = new RNG(1717);
+  for (let i = 0; i < 170; i++) {
+    const a = rng.range(1.5, 2.6), r = rng.range(27.2, 37);
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     const g = groundAt(x, z);
-    const H = rng.range(6, 11), W = rng.range(2.4, 4.0);
-    mb.sweep([[x, g - 0.3, z], [x + rng.sym(0.3), g + H * 0.55, z + rng.sym(0.3)]], (t) => V.mix(0.22, 0.1, t), 8, { mat: 2, capEnd: true });
-    const clumps = rng.int(7, 11);
-    for (let c = 0; c < clumps; c++) {
-      const cx = x + rng.sym(W * 0.6), cz = z + rng.sym(W * 0.6);
-      const cy = g + H * rng.range(0.45, 0.95);
-      const cr = rng.range(1.2, 2.0);
-      const n = Math.round(cr * cr * 70);
-      for (let k = 0; k < n; k++) {
-        const b = rng.range(0, 6.28), u = Math.pow(rng.next(), 0.35);
-        const yy = rng.range(-0.55, 0.8);
-        const p = [cx + Math.cos(b) * u * cr, cy + yy * cr * 0.8, cz + Math.sin(b) * u * cr];
-        fs.add(p, [Math.cos(b) * 0.6, 0.8, Math.sin(b) * 0.6], rng.range(0.55, 0.85), LEAF.CEDAR, rng.next(), 0.0, [0, 0, 0, 0], rng.range(0, 6.28));
+    const H = rng.range(9, 15), rad = rng.range(0.045, 0.085);
+    // Lean in toward the garden, bowing as it rises.
+    const inward = [-Math.cos(a), -Math.sin(a)];
+    const side = rng.sym(0.6);
+    const ld = V.normalize([0, 0, 0], [inward[0] + -inward[1] * side, 0, inward[1] + inward[0] * side]);
+    const lean = rng.range(0.03, 0.16), bow = rng.range(0.2, 0.9);
+    const at = (t) => [x + ld[0] * (H * t * lean + bow * t * t), g - 0.2 + H * t, z + ld[2] * (H * t * lean + bow * t * t)];
+    const path = [];
+    for (let k = 0; k <= 12; k++) path.push(at(k / 12));
+    mb.setSway([x, g, z], rng.range(0.008, 0.016));
+    mb.sweep(path, (t) => V.mix(rad, rad * 0.5, t), 8, { mat: 14, capEnd: true });
+    mb.clearSway();
+    // Branches with sprays of leaves on the upper half.
+    for (let y = 0.45; y < 1.0; y += rng.range(0.025, 0.05)) {
+      if (rng.chance(0.3)) continue;
+      const P = at(y);
+      const b = rng.range(0, Math.PI * 2);
+      const len = rng.range(0.4, 1.2) * (1.15 - y * 0.6);
+      const sprays = rng.int(2, 4);
+      for (let k = 1; k <= sprays; k++) {
+        const f = (k / sprays) * len;
+        const p = [P[0] + Math.cos(b) * f, P[1] + f * 0.25 - rng.range(0, 0.1), P[2] + Math.sin(b) * f];
+        fs.add(p, [Math.cos(b) * 0.9 + rng.sym(0.4), rng.range(0.1, 0.5), Math.sin(b) * 0.9 + rng.sym(0.4)], rng.range(0.17, 0.25), LEAF.BAMBOO, rng.next(), 1.0, [0.9, 1.0, rng.next(), rng.next()], rng.range(0, 6.28));
       }
     }
   }
@@ -337,7 +440,21 @@ export function createVegetation({ groundAt, waterLevel, seed = 7 }) {
     pinePads(fs, skel, rng, 0.6);
   }
 
-  cedars(fs, coreBuilder, groundAt);
+  // Pines on the waterfall hill, and a maple leaning over the falls.
+  for (const [x, z, k] of [[-5.6, -20.6, 21], [1.6, -21.4, 23]]) {
+    const skel = generateSkeleton(seed + k, { species: PINE, groundAt, origin: [x, groundAt(x, z), z], leanAz: Math.atan2(-z - 6, -x) });
+    barks.push(buildBarkMesh(skel, { groundAt, ancient: false, hiRes: false }));
+    pinePads(fs, skel, rng, 0.85);
+  }
+  {
+    const x = 0.6, z = -17.9;
+    const skel = generateSkeleton(seed + 41, { species: MAPLE, groundAt, origin: [x, groundAt(x, z), z] });
+    barks.push(buildBarkMesh(skel, { groundAt, ancient: false, hiRes: false }));
+    leafTree(fs, skel, LEAF.MAPLE, { seed: 11, minDepth: 2, gap: 0.045, perNode: [3, 6], stalk: 0.05, lift: 0.015, size: [0.042, 0.058], flutter: 1.0 });
+  }
+  sasa(fs, groundAt);
+  sugiGrove(fs, coreBuilder, groundAt);
+  bambooGrove(fs, coreBuilder, groundAt);
 
   const uniforms = lightingUniforms();
   const color = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, side: THREE.DoubleSide, alphaToCoverage: true });

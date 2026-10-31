@@ -74,6 +74,34 @@ export class Ambience {
     mkNoise().connect(rustleFilter).connect(rustleGain).connect(master);
     this.rustleGain = rustleGain;
 
+    // The stream: a bright babble over the low rush of the waterfall.
+    const wlen = ctx.sampleRate * 4;
+    const wb = ctx.createBuffer(2, wlen, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = wb.getChannelData(c);
+      for (let i = 0; i < wlen; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const water = ctx.createBufferSource();
+    water.buffer = wb;
+    water.loop = true;
+    water.start(0);
+    const babble = ctx.createBiquadFilter();
+    babble.type = 'bandpass';
+    babble.frequency.value = 1400;
+    babble.Q.value = 0.9;
+    const babbleGain = ctx.createGain();
+    babbleGain.gain.value = 0.02;
+    water.connect(babble).connect(babbleGain).connect(master);
+    babbleGain.connect(reverb);
+    const rush = ctx.createBiquadFilter();
+    rush.type = 'lowpass';
+    rush.frequency.value = 420;
+    const rushGain = ctx.createGain();
+    rushGain.gain.value = 0.05;
+    mkNoise().connect(rush).connect(rushGain).connect(master);
+    this.babble = babble;
+    this.babbleGain = babbleGain;
+
     // Pre-render a few plucked strings.
     const scale = [293.66, 311.13, 392.0, 440.0, 466.16, 587.33, 622.25, 783.99];
     this.notes = scale.map((f) => this.pluck(f));
@@ -148,6 +176,9 @@ export class Ambience {
     this.windGain.gain.setTargetAtTime(0.12 + gust * 0.32, t, 0.8);
     this.windFilter.frequency.setTargetAtTime(320 + gust * 420, t, 1.2);
     this.rustleGain.gain.setTargetAtTime(0.004 + gust * gust * 0.05, t, 0.6);
+    // Gurgles: the babble's level and pitch jump about many times a second.
+    this.babbleGain.gain.setTargetAtTime(0.012 + Math.random() * 0.028, t, 0.04);
+    this.babble.frequency.setTargetAtTime(900 + Math.random() * 1500, t, 0.05);
     if (t > this.nextNote) {
       const count = Math.random() < 0.3 ? 2 : 1;
       for (let k = 0; k < count; k++) {
