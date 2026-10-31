@@ -247,6 +247,10 @@ const port = server.address().port;
 console.log(`Yūzakura film: ${W}×${H} picture, rendered at ${Math.round(W * SS)}×${Math.round(H * SS)}, ` +
   `${FPS} fps${BLUR > 1 ? ` (${BLUR} sub-frames)` : ''}, quality ${QUALITY}, ${TOTAL.toFixed(1)} s`);
 console.log(`Frames: ${WORK}`);
+if (!opt('headless', false)) {
+  console.log('The browser window shows only the top-left corner of each frame, because the frame is\n' +
+    'larger than the screen. The captured frames are complete; leave the window alone.');
+}
 
 const browser = await launch();
 try {

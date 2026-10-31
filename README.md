@@ -70,7 +70,8 @@ node make-film.mjs                   # → out/yuzakura-4k.mp4, 3840×2160, 2.39
 ```
 
 A browser window opens and the frames are rendered and captured one by one, which takes
-about 10–30 minutes on a recent GPU. If it is interrupted, run it again and it resumes.
+about 10–30 minutes on a recent GPU. The frames are larger than the screen, so the window
+only shows their top-left corner; the captured frames are complete. If it is interrupted, run it again and it resumes.
 Useful options: `--ss 2` for even more supersampling, `--ss 1 --quality high` for GPUs
 with less memory, `--hevc` for a 10-bit HEVC file, `--blur 2` for motion blur, and
 `--width 1920 --height 804` for a 1080p version. The script header lists them all.
