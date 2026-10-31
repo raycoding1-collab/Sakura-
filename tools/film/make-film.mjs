@@ -22,6 +22,7 @@
 //   --hevc                       encode 10-bit HEVC instead of H.264
 //   --only opening,koi           render only these shots (no final film)
 //   --max-frames N               render at most N frames per shot (testing)
+//   --crf 15                     final quality (lower is better and larger)
 //   --out out/yuzakura-4k.mp4
 //   --three path                 serve a local three.module.min.js (offline use)
 //
@@ -197,17 +198,41 @@ async function renderTitles(browser) {
   return dir;
 }
 
-async function assemble(titles, score) {
+// Encoding runs in two passes so it fits in a laptop's memory: each shot is
+// first downscaled from its supersampled frames into a near-lossless clip
+// (one large frame in memory at a time), then the clips are joined with the
+// dissolves, titles and score into the final film.
+async function encodeClips() {
+  const dir = path.join(WORK, 'clips');
+  fs.mkdirSync(dir, { recursive: true });
+  const pix = HEVC ? 'yuv420p10le' : 'yuv420p';
+  const clips = [];
+  for (const s of SHOTS) {
+    const out = path.join(dir, `${s.name}.mp4`);
+    clips.push(out);
+    if (fs.existsSync(out)) continue;
+    console.log(`  ${s.name}`);
+    const blur = BLUR > 1 ? `tmix=frames=${BLUR},select=gte(n\\,${BLUR - 1}),framestep=${BLUR},` : '';
+    const tmp = path.join(dir, `${s.name}.part.mp4`);
+    await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-stats', '-y',
+      '-framerate', String(FPS * BLUR), '-i', path.join(WORK, s.name, 'f%04d.png'),
+      // tpad only matters for short test renders.
+      '-vf', `${blur}scale=${W}:${H}:flags=lanczos+accurate_rnd+full_chroma_int,setsar=1,fps=${FPS},` +
+        `tpad=stop_mode=clone:stop_duration=${s.seconds},trim=duration=${s.seconds},setpts=PTS-STARTPTS,format=${pix}`,
+      '-c:v', 'libx264', '-crf', '6', '-preset', 'fast', '-x264-params', 'rc-lookahead=10', '-threads', '4', tmp]);
+    fs.renameSync(tmp, out);
+  }
+  return clips;
+}
+
+async function assemble(clips, titles, score) {
   const H16 = Math.round((W * 9) / 16 / 2) * 2;
   const top = Math.round((H16 - H) / 4) * 2;
   const inputs = [];
   const graph = [];
-  SHOTS.forEach((s, i) => {
-    inputs.push('-framerate', String(FPS * BLUR), '-i', path.join(WORK, s.name, 'f%04d.png'));
-    const blur = BLUR > 1 ? `tmix=frames=${BLUR},select=gte(n\\,${BLUR - 1}),framestep=${BLUR},` : '';
-    // Supersampled frames are downscaled here; tpad only matters for test renders.
-    graph.push(`[${i}]${blur}scale=${W}:${H}:flags=lanczos+accurate_rnd+full_chroma_int,setsar=1,fps=${FPS},` +
-      `tpad=stop_mode=clone:stop_duration=${s.seconds},trim=duration=${s.seconds},format=yuv444p,setpts=PTS-STARTPTS[s${i}]`);
+  clips.forEach((c, i) => {
+    inputs.push('-threads', '2', '-i', c);
+    graph.push(`[${i}]setpts=PTS-STARTPTS[s${i}]`);
   });
   let prev = 's0', at = 0;
   for (let i = 1; i < SHOTS.length; i++) {
@@ -230,9 +255,10 @@ async function assemble(titles, score) {
     graph.push(`[${n + 2}]atrim=duration=${TOTAL.toFixed(3)},afade=out:st=${(TOTAL - 2.0).toFixed(3)}:d=2.0[aud]`);
     audio.push('-map', '[aud]', '-c:a', 'aac', '-b:a', '320k');
   }
+  const crf = String(opt('crf', HEVC ? 17 : 15));
   const video = HEVC
-    ? ['-c:v', 'libx265', '-crf', '14', '-preset', 'slow', '-tag:v', 'hvc1', '-x265-params', 'aq-mode=3:no-sao=1']
-    : ['-c:v', 'libx264', '-crf', '13', '-preset', 'slow', '-tune', 'film', '-profile:v', 'high'];
+    ? ['-c:v', 'libx265', '-crf', crf, '-preset', 'medium', '-tag:v', 'hvc1', '-x265-params', 'aq-mode=3:no-sao=1:rc-lookahead=20']
+    : ['-c:v', 'libx264', '-crf', crf, '-preset', 'medium', '-tune', 'film', '-profile:v', 'high', '-x264-params', 'rc-lookahead=20'];
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-stats', '-y', ...inputs,
     '-filter_complex', graph.join(';\n'), '-map', '[out]', ...audio,
@@ -254,23 +280,35 @@ if (!opt('headless', false)) {
     'larger than the screen. The captured frames are complete; leave the window alone.');
 }
 
-const browser = await launch();
+// The browser is only needed while there are frames or titles left to make.
+const framesLeft = (shot) => {
+  const dir = path.join(WORK, shot.name);
+  const count = Math.min(MAX_FRAMES, Math.ceil(shot.seconds * FPS)) * BLUR;
+  const done = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^f\d+\.png$/.test(f)).length : 0;
+  return done < count;
+};
+const titlesDir = path.join(WORK, 'titles');
+const haveTitles = ['open.png', 'close.png'].every((f) => fs.existsSync(path.join(titlesDir, f)));
+const pending = SHOTS.filter((s) => (!ONLY || ONLY.includes(s.name)) && framesLeft(s));
+let browser = pending.length || (!ONLY && !haveTitles) ? await launch() : null;
 try {
   const started = Date.now();
   for (const shot of SHOTS) {
     if (ONLY && !ONLY.includes(shot.name)) continue;
+    if (!pending.includes(shot)) { console.log(`  ${shot.name}: done`); continue; }
     await renderShot(browser, port, shot);
   }
-  console.log(`Rendered in ${fmtTime((Date.now() - started) / 1000)}.`);
+  if (pending.length) console.log(`Rendered in ${fmtTime((Date.now() - started) / 1000)}.`);
   if (!ONLY) await finish();
 } finally {
-  await browser.close().catch(() => {});
+  if (browser) await browser.close().catch(() => {});
   server.close();
 }
 
 async function finish() {
-  const titles = await renderTitles(browser);
-  await browser.close();
+  const titles = haveTitles ? titlesDir : await renderTitles(browser);
+  if (browser) await browser.close();
+  browser = null;
 
   let score = path.join(WORK, 'score.wav');
   const py = spawnSync(process.platform === 'win32' ? 'python' : 'python3', [path.join(HERE, 'score.py'), score], { stdio: 'inherit' });
@@ -278,7 +316,9 @@ async function finish() {
     console.warn('Could not synthesise the score (Python 3 with NumPy is needed); the film will be silent.');
     score = null;
   }
-  console.log('Encoding…');
-  await assemble(titles, score);
+  console.log('Encoding each shot…');
+  const clips = await encodeClips();
+  console.log('Joining the shots into the film…');
+  await assemble(clips, titles, score);
   console.log(`\nDone: ${OUT}`);
 }
