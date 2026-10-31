@@ -247,7 +247,7 @@ async function boot() {
     renderer.setPixelRatio(1);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    camera.fov = w / h < 0.8 ? 58 : 40;
+    camera.fov = parseFloat(params.get('fov')) || (w / h < 0.8 ? 58 : 40);
     camera.updateProjectionMatrix();
     post.setSize(w, h);
     if (reflection) reflection.setSize(w, h);
@@ -333,7 +333,7 @@ async function boot() {
     window.__frames = frames;
 
     // Adaptive resolution: hold a smooth frame rate rather than a fixed size.
-    if (frames > 30 && raw < 0.5) {
+    if (frames > 30 && raw < 0.5 && forcedDt === undefined) {
       perfAcc += raw;
       perfN++;
       perfT += raw;
