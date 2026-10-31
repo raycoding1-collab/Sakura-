@@ -7,6 +7,9 @@ water, lanterns glow, and the camera wanders slowly through the garden.
 
 ![Across the koi pond, backlit by the low sun](docs/pond-backlit.jpg)
 
+**Film:** [`docs/yuzakura-film.mp4`](docs/yuzakura-film.mp4), a 25-second 2.39:1 short rendered from the scene,
+with a soundtrack synthesised in code.
+
 | | |
 |---|---|
 | ![Inside the curtain: the sacred rope around the ancient trunk](docs/sacred-trunk.jpg) | ![Beside the vermilion bridge](docs/bridge.jpg) |
