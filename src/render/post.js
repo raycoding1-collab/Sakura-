@@ -49,14 +49,19 @@ const DOF_PREFILTER = DEPTH_FN + /* glsl */ `
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform vec2 uTexel;
+uniform float uDiv; // footprint of one output texel, in full-res pixels (2 or 4)
 varying vec2 vUv;
 void main() {
-  vec3 c = texture2D(tColor, vUv).rgb;
-  // Nearest depth of the 2x2 footprint keeps thin foreground petals intact.
-  float d0 = texture2D(tDepth, vUv + uTexel * vec2(-0.5, -0.5)).r;
-  float d1 = texture2D(tDepth, vUv + uTexel * vec2(0.5, -0.5)).r;
-  float d2 = texture2D(tDepth, vUv + uTexel * vec2(-0.5, 0.5)).r;
-  float d3 = texture2D(tDepth, vUv + uTexel * vec2(0.5, 0.5)).r;
+  // Box-filter the footprint: one bilinear tap covers 2x2, four cover 4x4.
+  float oc = (uDiv - 2.0) * 0.5;
+  vec3 c = 0.25 * (texture2D(tColor, vUv + uTexel * vec2(-oc, -oc)).rgb + texture2D(tColor, vUv + uTexel * vec2(oc, -oc)).rgb
+                 + texture2D(tColor, vUv + uTexel * vec2(-oc, oc)).rgb + texture2D(tColor, vUv + uTexel * vec2(oc, oc)).rgb);
+  // Nearest depth of the footprint keeps thin foreground petals intact.
+  float od = (uDiv - 1.0) * 0.5;
+  float d0 = texture2D(tDepth, vUv + uTexel * vec2(-od, -od)).r;
+  float d1 = texture2D(tDepth, vUv + uTexel * vec2(od, -od)).r;
+  float d2 = texture2D(tDepth, vUv + uTexel * vec2(-od, od)).r;
+  float d3 = texture2D(tDepth, vUv + uTexel * vec2(od, od)).r;
   float d = min(min(d0, d1), min(d2, d3));
   gl_FragColor = vec4(clamp(c, vec3(0.0), vec3(300.0)), linearDepth(d));
 }`;
@@ -65,7 +70,7 @@ const DOF_GATHER = /* glsl */ `
 uniform sampler2D tHalf;
 uniform vec2 uPixel;
 uniform float uFocus;
-uniform float uAperture; // blur in half-res pixels per dioptre
+uniform float uAperture; // blur in gather-res pixels per dioptre
 uniform float uMaxBlur;
 varying vec2 vUv;
 const float GOLDEN = 2.39996323;
@@ -187,6 +192,7 @@ uniform sampler2D tBloom;
 uniform float uUseDof;
 uniform float uFocus;
 uniform float uAperture;
+uniform float uDofDiv;
 uniform vec3 uGodTint;
 uniform float uGod;
 uniform float uBloom;
@@ -234,9 +240,9 @@ void main() {
 #endif
   if (uUseDof > 0.5) {
     float depth = linearDepth(texture2D(tDepth, vUv).r);
-    float coc = abs(1.0 / uFocus - 1.0 / max(depth, 0.05)) * uAperture * 2.0;
+    float coc = abs(1.0 / uFocus - 1.0 / max(depth, 0.05)) * uAperture * uDofDiv;
     vec4 dof = texture2D(tDof, vUv);
-    float m = smoothstep(0.9, 2.2, max(coc, dof.a * 2.0));
+    float m = smoothstep(0.9, 2.2, max(coc, dof.a * uDofDiv));
     col = mix(col, dof.rgb, m);
   }
   // In-scattering grows with the length of air in front of each pixel.
@@ -283,7 +289,7 @@ export class PostPipeline {
 
     const time = opts.timeUniform;
     this.mat = {
-      prefilter: pass(COMMON + DOF_PREFILTER, { uTime: time, tColor: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2() }, uNearFar: { value: new THREE.Vector2(0.1, 4000) } }),
+      prefilter: pass(COMMON + DOF_PREFILTER, { uTime: time, tColor: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2() }, uDiv: { value: 2 }, uNearFar: { value: new THREE.Vector2(0.1, 4000) } }),
       gather: pass(COMMON + DOF_GATHER, { uTime: time, tHalf: { value: null }, uPixel: { value: new THREE.Vector2() }, uFocus: { value: 15 }, uAperture: { value: 40 }, uMaxBlur: { value: 14 } }),
       godMask: pass(COMMON + GOD_MASK, { uTime: time, tColor: { value: null }, tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 } }),
       godBlur: pass(COMMON + GOD_BLUR, { uTime: time, tInput: { value: null }, uSun: { value: new THREE.Vector2() }, uLength: { value: 1 } }),
@@ -293,7 +299,7 @@ export class PostPipeline {
         uTime: time,
         tColor: { value: null }, tDepth: { value: null }, tDof: { value: null }, tGod: { value: null }, tBloom: { value: null },
         uNearFar: { value: new THREE.Vector2(0.1, 4000) },
-        uUseDof: { value: 1 }, uFocus: { value: 15 }, uAperture: { value: 40 },
+        uUseDof: { value: 1 }, uFocus: { value: 15 }, uAperture: { value: 40 }, uDofDiv: { value: 2 },
         uGodTint: { value: new THREE.Color(1.0, 0.72, 0.45) }, uGod: { value: 0.0 },
         uBloom: { value: 0.07 }, uBloomLevels: { value: this.bloomLevels },
         uExposure: { value: 1.0 }, uVignette: { value: 0.32 }, uGrain: { value: 0.012 }, uFade: { value: 1 },
@@ -324,8 +330,15 @@ export class PostPipeline {
     depthTexture.type = THREE.UnsignedIntType;
     this.hdr = rt(w, h, { samples: this.samples, depthBuffer: true, depthTexture });
     const hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1);
-    this.half = rt(hw, hh);
-    this.dof = rt(hw, hh);
+    // Above ~1200 lines (4K film frames) depth of field gathers at quarter
+    // resolution so its reach in screen terms stays the same, and bloom gains
+    // a level so its glow keeps its size relative to the frame.
+    this.dofDiv = h > 1200 ? 4 : 2;
+    const qw = Math.max(1, Math.floor(w / this.dofDiv)), qh = Math.max(1, Math.floor(h / this.dofDiv));
+    this.half = rt(qw, qh);
+    this.dof = rt(qw, qh);
+    this.bloomLevels = h > 1600 ? 7 : 6;
+    this.mat.composite.uniforms.uBloomLevels.value = this.bloomLevels;
     this.godA = rt(hw, hh);
     this.godB = rt(hw, hh);
     this.down = [];
@@ -385,19 +398,21 @@ export class PostPipeline {
 
     // Depth of field.
     const useDof = this.useDof;
-    // Gather runs at half resolution, so the aperture is expressed in half-res pixels.
-    const aperture = this.params.aperture * resScale * 0.5;
+    // Gather runs at reduced resolution, so the aperture is expressed in its pixels.
+    const div = this.dofDiv;
+    const aperture = this.params.aperture * resScale / div;
     if (useDof) {
       m.prefilter.uniforms.tColor.value = color;
       m.prefilter.uniforms.tDepth.value = depth;
       m.prefilter.uniforms.uTexel.value.set(1 / w, 1 / h);
+      m.prefilter.uniforms.uDiv.value = div;
       m.prefilter.uniforms.uNearFar.value.copy(nearFar);
       this.draw(m.prefilter, this.half);
       m.gather.uniforms.tHalf.value = this.half.texture;
       m.gather.uniforms.uPixel.value.set(1 / this.half.width, 1 / this.half.height);
       m.gather.uniforms.uFocus.value = this.params.focus;
       m.gather.uniforms.uAperture.value = aperture;
-      m.gather.uniforms.uMaxBlur.value = 13 * Math.max(0.6, resScale);
+      m.gather.uniforms.uMaxBlur.value = 13 * Math.max(0.6, resScale) * 2 / div;
       this.draw(m.gather, this.dof);
     }
 
@@ -453,6 +468,7 @@ export class PostPipeline {
     c.uUseDof.value = useDof ? 1 : 0;
     c.uFocus.value = this.params.focus;
     c.uAperture.value = aperture;
+    c.uDofDiv.value = div;
     c.uGod.value = god;
     c.uBloom.value = this.params.bloom;
     // Eye adaptation: stop down a little when staring into the low sun.

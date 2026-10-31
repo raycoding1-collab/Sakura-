@@ -15,6 +15,8 @@ attribute vec2 aCyl;
 attribute vec4 aBark;
 attribute vec4 aWind;
 attribute float aFeature;
+uniform float uPixelAngle; // view angle of one screen pixel (radians)
+varying float vCoverage;
 varying vec3 vWorld;
 varying vec3 vRest;
 varying vec3 vNormal;
@@ -23,6 +25,17 @@ varying vec4 vBark;
 varying float vFeature;
 void main() {
   vec3 p = position + treeWind(position, aWind);
+  vCoverage = 1.0;
+#ifndef DEPTH_PASS
+  // Branches thinner than a pixel are widened to about one pixel and drawn
+  // with matching partial coverage, so they read as soft lines rather than
+  // broken stair-steps.
+  float rMin = 0.7 * uPixelAngle * length(p - cameraPosition);
+  if (aBark.x < rMin) {
+    p += normal * (rMin - aBark.x);
+    vCoverage = aBark.x / rMin;
+  }
+#endif
   vWorld = p;
   vRest = position;
   vNormal = normal;
@@ -40,6 +53,7 @@ varying vec3 vNormal;
 varying vec2 vCyl;
 varying vec4 vBark;
 varying float vFeature;
+varying float vCoverage;
 
 vec3 voronoi3(vec3 p) {
   vec3 i = floor(p), f = fract(p);
@@ -197,14 +211,14 @@ void main() {
   vec3 col = albedo * (sun + amb + lamp);
   col += uSunColor * ggxSpec(nb, v, l, roughness) * sh * mix(0.5, 0.15, max(age, ancient));
   col = applyFog(col, vWorld);
-  gl_FragColor = vec4(col, 1.0);
+  gl_FragColor = vec4(col, saturate(vCoverage));
 #endif
 }
 `;
 
 export function createBarkMaterials() {
-  const uniforms = lightingUniforms();
-  const color = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader });
+  const uniforms = lightingUniforms({ uPixelAngle: { value: 0.0007 } });
+  const color = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, alphaToCoverage: true });
   const depth = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, defines: { DEPTH_PASS: 1 } });
   return { color, depth };
 }

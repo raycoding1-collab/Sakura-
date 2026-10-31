@@ -8,7 +8,8 @@ water, lanterns glow, and the camera wanders slowly through the garden.
 ![Across the koi pond, backlit by the low sun](docs/pond-backlit.jpg)
 
 **Film:** [`docs/yuzakura-film.mp4`](docs/yuzakura-film.mp4), a 25-second 2.39:1 short rendered from the scene,
-with a soundtrack synthesised in code.
+with a soundtrack synthesised in code. To render it in 4K on your own graphics card, see
+[Rendering the film in 4K](#rendering-the-film-in-4k).
 
 | | |
 |---|---|
@@ -48,10 +49,31 @@ beside the trunk.
 |---|---|
 | `?seed=23` | Grow a different tree. Every seed gives a new skeleton, crown and blossom layout |
 | `?tree=yoshino` | The broad, non-weeping Somei-Yoshino cherry instead of the weeping one |
-| `?quality=low\|medium\|high` | Override the automatic quality choice |
+| `?quality=low\|medium\|high\|ultra` | Override the automatic quality choice (`ultra` is meant for offline rendering) |
 
 Quality is picked from the GPU class, and the render scale then adapts to hold a smooth
 frame rate.
+
+## Rendering the film in 4K
+
+The film in `docs/` was rendered without a GPU, in software, so it was made at 1440×603
+and 12 fps, then upscaled and frame-interpolated. `tools/film/make-film.mjs` renders the
+same film on your own graphics card at full quality: every frame at native 24 fps,
+supersampled 1.5× and downscaled with a Lanczos filter, so there is no upscaling or
+interpolation anywhere. It needs Node 18+, ffmpeg and Python 3 with NumPy.
+
+```sh
+cd tools/film
+npm install
+npx playwright install chromium      # or add --chrome to use your installed Chrome
+node make-film.mjs                   # → out/yuzakura-4k.mp4, 3840×2160, 2.39:1 picture
+```
+
+A browser window opens and the frames are rendered and captured one by one, which takes
+about 10–30 minutes on a recent GPU. If it is interrupted, run it again and it resumes.
+Useful options: `--ss 2` for even more supersampling, `--ss 1 --quality high` for GPUs
+with less memory, `--hevc` for a 10-bit HEVC file, `--blur 2` for motion blur, and
+`--width 1920 --height 804` for a 1080p version. The script header lists them all.
 
 ## Inspiration
 
@@ -137,5 +159,6 @@ src/render/           shared GLSL, uniforms, sun shadows, post-processing
 src/camera/           cinematic camera loop and user controls
 src/ui/               loader, title card and controls
 src/audio/            synthesised ambience
+tools/film/           renders the short film in 4K on your GPU
 docs/                 screenshots
 ```

@@ -30,6 +30,8 @@ const seed = parseInt(params.get('seed') || '7', 10);
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 const PRESETS = {
+  // For offline film rendering on a strong GPU.
+  ultra: { flowers: 1.0, grass: 220000, carpet: 52000, falling: 6000, motes: 1400, shadow: 4096, samples: 4, dof: true, pixels: 40e6, reflect: 0.75, reflectFlowers: 0.8 },
   high: { flowers: 0.75, grass: 160000, carpet: 42000, falling: 5000, motes: 1100, shadow: 4096, samples: 4, dof: true, pixels: 2.6e6, reflect: 0.5, reflectFlowers: 0.45 },
   medium: { flowers: 0.5, grass: 90000, carpet: 30000, falling: 3600, motes: 900, shadow: 2048, samples: 4, dof: true, pixels: 1.5e6, reflect: 0.35, reflectFlowers: 0.3 },
   low: { flowers: 0.32, grass: 40000, carpet: 18000, falling: 2200, motes: 500, shadow: 2048, samples: 2, dof: false, pixels: 0.85e6, reflect: 0.25, reflectFlowers: 0.15 },
@@ -237,10 +239,10 @@ async function boot() {
   // ---- Resolution management ------------------------------------------------------
   let renderScale = 1;
   const resize = () => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, parseFloat(params.get('maxdpr')) || 2);
     const cssW = window.innerWidth, cssH = window.innerHeight;
     let w = cssW * dpr, h = cssH * dpr;
-    const cap = Math.sqrt(Q.pixels / (w * h));
+    const cap = Math.sqrt((parseFloat(params.get('maxpx')) || Q.pixels) / (w * h));
     const s = Math.min(1, cap) * renderScale;
     w = Math.max(320, Math.floor(w * s));
     h = Math.max(180, Math.floor(h * s));
@@ -252,6 +254,7 @@ async function boot() {
     post.setSize(w, h);
     if (reflection) reflection.setSize(w, h);
     motes.material.uniforms.uPixelScale.value = h / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    barkMats.color.uniforms.uPixelAngle.value = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / h;
   };
   window.addEventListener('resize', resize);
   resize();
