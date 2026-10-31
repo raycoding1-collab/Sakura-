@@ -6,7 +6,7 @@ browser. Curtains of blossom sway over a koi pond fed by a mountain stream that 
 from a rock waterfall; petals drift down and ride the current in rafts, lanterns glow,
 and the camera wanders slowly through the garden.
 
-![Across the koi pond, backlit by the low sun](docs/pond-backlit.jpg)
+![Across the koi pond, backlit by the low sun](docs/yuzakura-pond.jpg)
 
 **Film:** [`docs/yuzakura-film.mp4`](docs/yuzakura-film.mp4) is an early 25-second cut, rendered in
 software before the stream and waterfall were added. To render the current film in 4K on
@@ -14,8 +14,11 @@ your own graphics card, see [Rendering the film in 4K](#rendering-the-film-in-4k
 
 | | |
 |---|---|
-| ![Inside the curtain: the sacred rope around the ancient trunk](docs/sacred-trunk.jpg) | ![Beside the vermilion bridge](docs/bridge.jpg) |
-| ![Front-lit, with a red Japanese maple](docs/front-lit-maple.jpg) | |
+| ![Petal rafts drifting down the stream toward the waterfall](docs/yuzakura-stream.jpg) | ![The waterfall between its guardian stones, the carp stone at its foot](docs/yuzakura-falls.jpg) |
+| ![Inside the curtain: the sacred rope around the ancient trunk](docs/yuzakura-curtain.jpg) | ![Front-lit, with a red Japanese maple](docs/yuzakura-frontlit.jpg) |
+| ![Bonbori lamps beneath the cherry](docs/yuzakura-lamps.jpg) | |
+
+All stills are 3840×1608, rendered at 5760×2412 and downscaled.
 
 ## Running it
 
